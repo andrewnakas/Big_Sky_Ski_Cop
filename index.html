@@ -302,7 +302,7 @@
             },
             terrain: {
                 size: 8192,  // MUCH bigger terrain - 8km x 8km
-                segments: 128, // More detail for larger terrain
+                segments: 64, // Keep segments low for performance
                 heightScale: 5.0, // More vertical exaggeration for dramatic slopes
                 tileZoom: 13 // zoom level for terrain tiles
             },
@@ -498,39 +498,8 @@
             console.log(`✅ Terrain mesh added to scene at position (${terrain.position.x}, ${terrain.position.y}, ${terrain.position.z})`);
             console.log(`   Terrain visible: ${terrain.visible}, Vertices: ${geometry.attributes.position.count}`);
             console.log(`   Terrain size: ${config.terrain.size} x ${config.terrain.size}`);
-            console.log(`   Terrain bounds: x(${-config.terrain.size/2} to ${config.terrain.size/2}), z(${-config.terrain.size/2} to ${config.terrain.size/2})`);
 
-            // Add a grid helper for debugging
-            const gridHelper = new THREE.GridHelper(config.terrain.size, 20, 0xff0000, 0x00ff00);
-            gridHelper.position.y = 0.1; // Slightly above terrain base
-            scene.add(gridHelper);
-            console.log('✅ Grid helper added for reference');
-
-            // Add axis helper
-            const axisHelper = new THREE.AxesHelper(500);
-            scene.add(axisHelper);
-            console.log('✅ Axis helper added (Red=X, Green=Y, Blue=Z)');
-
-            // Add bright markers at terrain corners for debugging
-            const markerSize = 20;
-            const corners = [
-                { x: -config.terrain.size / 2, z: -config.terrain.size / 2, color: 0xff0000 }, // Red
-                { x: config.terrain.size / 2, z: -config.terrain.size / 2, color: 0x00ff00 },  // Green
-                { x: -config.terrain.size / 2, z: config.terrain.size / 2, color: 0x0000ff },  // Blue
-                { x: config.terrain.size / 2, z: config.terrain.size / 2, color: 0xffff00 }    // Yellow
-            ];
-
-            corners.forEach((corner, idx) => {
-                const markerGeo = new THREE.BoxGeometry(markerSize, markerSize, markerSize);
-                const markerMat = new THREE.MeshBasicMaterial({ color: corner.color });
-                const marker = new THREE.Mesh(markerGeo, markerMat);
-                const y = getTerrainHeight(corner.x, corner.z);
-                marker.position.set(corner.x, y + markerSize, corner.z);
-                scene.add(marker);
-            });
-            console.log('✅ Added corner markers (Red, Green, Blue, Yellow)');
-
-            // Simplified physics - no heightfield (we use raycasting instead for better performance)
+            // Terrain loaded successfully
             console.log('✅ Terrain loaded successfully');
 
             // Add some trees
@@ -651,7 +620,7 @@
             });
 
             // Add trees on the slopes
-            const treeCount = 30;
+            const treeCount = 15; // Reduced for performance
             const treeGeometry = new THREE.ConeGeometry(2, 10, 8);
             const treeMaterial = new THREE.MeshStandardMaterial({ color: 0x1a5f1a });
 
@@ -671,10 +640,8 @@
         }
 
         // Get terrain height at position
-        let heightCheckCount = 0;
         function getTerrainHeight(x, z) {
             if (!terrain) {
-                console.warn('⚠️ getTerrainHeight called but terrain not loaded yet!');
                 return 100; // Default height if terrain not loaded yet
             }
 
@@ -685,21 +652,11 @@
             );
             const intersects = raycaster.intersectObject(terrain, true);
 
-            // Debug first few calls
-            if (heightCheckCount < 5) {
-                console.log(`🔍 Raycast at (${x.toFixed(1)}, ${z.toFixed(1)}): ${intersects.length} intersections`);
-                if (intersects.length > 0) {
-                    console.log(`   Hit at y=${intersects[0].point.y.toFixed(1)}`);
-                }
-                heightCheckCount++;
-            }
-
             if (intersects.length > 0) {
                 return intersects[0].point.y;
             }
 
             // Fallback: return a high value at the edges
-            console.warn(`⚠️ No terrain intersection at (${x.toFixed(1)}, ${z.toFixed(1)})`);
             return 100;
         }
 
@@ -760,18 +717,8 @@
             camera.lookAt(new THREE.Vector3(peakX, maxHeight, peakZ));
 
             console.log(`✅ Camera positioned at (${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)})`);
-            console.log(`   Camera looking at player at (${peakX.toFixed(1)}, ${maxHeight.toFixed(1)}, ${peakZ.toFixed(1)})`);
-
-            // Add a big bright marker at player position so we can see where they are
-            const markerGeometry = new THREE.SphereGeometry(10, 16, 16);
-            const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xff00ff }); // Bright magenta
-            const marker = new THREE.Mesh(markerGeometry, markerMaterial);
-            marker.position.set(peakX, maxHeight + 20, peakZ);
-            scene.add(marker);
-            console.log(`✅ Added magenta marker sphere at player position`);
 
             // Physics body (we don't actually use Cannon.js for terrain collision anymore)
-            // Just keeping this for reference
             playerBody = null;
         }
 
@@ -890,16 +837,8 @@
         }
 
         // Update player physics and controls
-        let playerUpdateCount = 0;
         function updatePlayer(deltaTime) {
             if (!gameActive) return;
-
-            // Debug first few frames
-            if (playerUpdateCount < 3) {
-                console.log(`\n🎮 Player Update #${playerUpdateCount}:`);
-                console.log(`   Position: (${player.position.x.toFixed(1)}, ${player.position.y.toFixed(1)}, ${player.position.z.toFixed(1)})`);
-                console.log(`   Velocity: (${playerVelocity.x.toFixed(1)}, ${playerVelocity.y.toFixed(1)}, ${playerVelocity.z.toFixed(1)})`);
-            }
 
             // Ragdoll physics after crash
             if (isRagdoll) {
@@ -945,11 +884,6 @@
             // Get terrain normal for realistic skiing
             const terrainHeight = getTerrainHeight(player.position.x, player.position.z);
             const groundContact = Math.abs(player.position.y - terrainHeight) < 5; // More lenient
-
-            if (playerUpdateCount < 3) {
-                console.log(`   Terrain height: ${terrainHeight.toFixed(1)}, Distance: ${Math.abs(player.position.y - terrainHeight).toFixed(1)}, Ground contact: ${groundContact}`);
-                playerUpdateCount++;
-            }
 
             // Crash detection - too fast landing or hitting obstacles
             if (!isAirborne && groundContact && Math.abs(playerVelocity.y) > 20) {
