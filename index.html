@@ -301,7 +301,7 @@
                 baseElevation: 7500   // feet
             },
             terrain: {
-                size: 8192,  // MUCH bigger terrain - 8km x 8km
+                size: 4096,  // Bigger terrain - 4km x 4km (still 2x original)
                 segments: 64, // Keep segments low for performance
                 heightScale: 5.0, // More vertical exaggeration for dramatic slopes
                 tileZoom: 13 // zoom level for terrain tiles
@@ -352,11 +352,10 @@
             // Renderer setup
             renderer = new THREE.WebGLRenderer({
                 canvas: document.getElementById('gameCanvas'),
-                antialias: true
+                antialias: false // Disable for better performance
             });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.shadowMap.enabled = true;
-            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.shadowMap.enabled = false; // Disable shadows for performance
 
             // Lighting - make it brighter so we can see the terrain
             const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
@@ -491,8 +490,6 @@
             );
 
             terrain = new THREE.Mesh(geometry, material);
-            terrain.receiveShadow = true;
-            terrain.castShadow = true;
             scene.add(terrain);
 
             console.log(`✅ Terrain mesh added to scene at position (${terrain.position.x}, ${terrain.position.y}, ${terrain.position.z})`);
@@ -567,26 +564,15 @@
             return heightData;
         }
 
+        // Store peak location globally to avoid recalculating
+        let peakLocation = { x: 0, z: 0, height: 0 };
+
         // Add trees and obstacles
         function addTreesAndObstacles() {
-            // Find the peak to place tram station there
-            let maxHeight = 0;
-            let peakX = 0;
-            let peakZ = 0;
-
-            const searchSize = config.terrain.size * 0.4;
-            const searchStep = 20;
-
-            for (let x = -searchSize; x < searchSize; x += searchStep) {
-                for (let z = -searchSize; z < searchSize; z += searchStep) {
-                    const h = getTerrainHeight(x, z);
-                    if (h > maxHeight) {
-                        maxHeight = h;
-                        peakX = x;
-                        peakZ = z;
-                    }
-                }
-            }
+            // Use stored peak location
+            const peakX = peakLocation.x;
+            const peakZ = peakLocation.z;
+            const maxHeight = peakLocation.height;
 
             // Add Lone Peak Tram station at the summit
             const tramGeometry = new THREE.BoxGeometry(15, 8, 10);
@@ -612,15 +598,15 @@
                     new THREE.BoxGeometry(8, 4, 0.5),
                     new THREE.MeshStandardMaterial({ color: 0xff0000 })
                 );
-                const signY = getTerrainHeight(pos.x, pos.z);
+                const signY = maxHeight; // Use stored height
                 signPost.position.set(pos.x, signY + 3, pos.z);
                 sign.position.set(pos.x, signY + 5, pos.z);
                 scene.add(signPost);
                 scene.add(sign);
             });
 
-            // Add trees on the slopes
-            const treeCount = 15; // Reduced for performance
+            // Add trees on the slopes - much fewer
+            const treeCount = 5; // Reduced even more for performance
             const treeGeometry = new THREE.ConeGeometry(2, 10, 8);
             const treeMaterial = new THREE.MeshStandardMaterial({ color: 0x1a5f1a });
 
@@ -687,36 +673,33 @@
             player.add(skiRight);
             player.castShadow = true;
 
-            // Start at the absolute peak of Lone Mountain
-            // Find the highest point on the terrain
-            let maxHeight = 0;
-            let peakX = 0;
-            let peakZ = 0;
-
+            // Find peak ONCE and store it
+            console.log('🔍 Finding mountain peak...');
             const searchSize = config.terrain.size * 0.4;
-            const searchStep = 20;
+            const searchStep = 50; // Larger step for faster search
 
             for (let x = -searchSize; x < searchSize; x += searchStep) {
                 for (let z = -searchSize; z < searchSize; z += searchStep) {
                     const h = getTerrainHeight(x, z);
-                    if (h > maxHeight) {
-                        maxHeight = h;
-                        peakX = x;
-                        peakZ = z;
+                    if (h > peakLocation.height) {
+                        peakLocation.height = h;
+                        peakLocation.x = x;
+                        peakLocation.z = z;
                     }
                 }
             }
 
-            player.position.set(peakX, maxHeight + 1, peakZ); // Start just 1 unit above terrain
+            // Use stored peak location
+            player.position.set(peakLocation.x, peakLocation.height + 1, peakLocation.z);
             scene.add(player);
 
-            console.log(`✅ Player spawned at Lone Peak summit (highest point), height: ${maxHeight.toFixed(1)} ft at position (${peakX.toFixed(1)}, ${peakZ.toFixed(1)})`);
+            console.log(`✅ Player spawned at Lone Peak summit, height: ${peakLocation.height.toFixed(1)} ft at (${peakLocation.x.toFixed(1)}, ${peakLocation.z.toFixed(1)})`);
 
             // Position camera behind and above player
-            camera.position.set(peakX, maxHeight + 50, peakZ + 80);
-            camera.lookAt(new THREE.Vector3(peakX, maxHeight, peakZ));
+            camera.position.set(peakLocation.x, peakLocation.height + 50, peakLocation.z + 80);
+            camera.lookAt(new THREE.Vector3(peakLocation.x, peakLocation.height, peakLocation.z));
 
-            console.log(`✅ Camera positioned at (${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)})`);
+            console.log(`✅ Camera positioned`);
 
             // Physics body (we don't actually use Cannon.js for terrain collision anymore)
             playerBody = null;
@@ -901,67 +884,40 @@
                 player.position.y = terrainHeight + 1;
                 playerVelocity.y = 0; // Stop falling when on ground
 
-                // REALISTIC SKIING PHYSICS
+                // Simplified realistic skiing physics
                 const slopeVector = getTerrainSlope(player.position.x, player.position.z);
 
-                // Calculate slope angle (in radians)
-                const slopeAngle = Math.atan(Math.sqrt(slopeVector.x ** 2 + slopeVector.z ** 2));
+                // Gravity acceleration down slope (simplified)
+                const slopeMagnitude = Math.sqrt(slopeVector.x ** 2 + slopeVector.z ** 2);
+                const gravityAccel = 20 * slopeMagnitude; // Simple slope-based acceleration
 
-                // Gravitational component down the slope (realistic physics)
-                // F = m * g * sin(θ)
-                const gravityDownSlope = config.physics.gravity * Math.sin(slopeAngle);
+                // Apply gravity in slope direction
+                if (slopeMagnitude > 0.01) {
+                    playerVelocity.x += (slopeVector.x / slopeMagnitude) * gravityAccel * deltaTime;
+                    playerVelocity.z += (slopeVector.z / slopeMagnitude) * gravityAccel * deltaTime;
+                }
 
-                // Friction force (opposes motion)
-                // F_friction = μ * m * g * cos(θ)
-                const normalForce = Math.abs(config.physics.gravity) * Math.cos(slopeAngle);
-                const currentSpeed = Math.sqrt(playerVelocity.x ** 2 + playerVelocity.z ** 2);
-
-                // Dynamic friction coefficient (depends on edge angle and snow conditions)
-                let frictionCoeff = 0.05; // Base friction (waxed skis on snow)
-
-                // Pizzaing (S key) increases friction dramatically
+                // Friction (simplified)
+                let friction = 0.98; // Base friction
                 if (keys['KeyS']) {
-                    frictionCoeff = 0.3;
+                    friction = 0.90; // More friction when braking
                 }
 
-                // Edge control (Q/E) reduces friction when carving
-                frictionCoeff -= Math.abs(edgeAngle) * 0.02;
-                frictionCoeff = Math.max(0.02, frictionCoeff);
+                // Apply friction
+                playerVelocity.x *= friction;
+                playerVelocity.z *= friction;
 
-                const frictionForce = frictionCoeff * normalForce;
-
-                // Air resistance (increases with speed squared)
-                const airDensity = 0.002; // Simplified air resistance coefficient
-                const airResistance = airDensity * currentSpeed * currentSpeed;
-
-                // Net acceleration
-                const netAccel = Math.abs(gravityDownSlope) - frictionForce - airResistance;
-
-                // Apply acceleration in slope direction
-                if (slopeVector.x !== 0 || slopeVector.z !== 0) {
-                    const slopeMag = Math.sqrt(slopeVector.x ** 2 + slopeVector.z ** 2);
-                    const slopeDir = {
-                        x: slopeVector.x / slopeMag,
-                        z: slopeVector.z / slopeMag
-                    };
-
-                    playerVelocity.x += slopeDir.x * netAccel * deltaTime * 50;
-                    playerVelocity.z += slopeDir.z * netAccel * deltaTime * 50;
-                }
-
-                // Controls
+                // Controls - simplified
                 if (keys['KeyW']) {
-                    // Tuck/push - reduce air resistance, add slight push
-                    const tuckBonus = 5;
+                    // Push forward
                     const dirX = -Math.sin(playerRotation);
                     const dirZ = -Math.cos(playerRotation);
-                    playerVelocity.x += dirX * tuckBonus * deltaTime;
-                    playerVelocity.z += dirZ * tuckBonus * deltaTime;
+                    playerVelocity.x += dirX * 8 * deltaTime;
+                    playerVelocity.z += dirZ * 8 * deltaTime;
                 }
-                // S key is handled in friction calculation above
 
-                // Turning - speed affects turn rate
-                const turnRate = Math.max(0.5, 3.0 - speed * 0.02); // Slower turns at high speed
+                // Turning
+                const turnRate = 2.0;
                 if (keys['KeyA']) {
                     playerRotation += turnRate * deltaTime;
                 }
@@ -975,23 +931,12 @@
                 } else if (keys['KeyE']) {
                     edgeAngle = Math.max(edgeAngle - deltaTime * 3, -0.6);
                 } else {
-                    // Return to neutral
-                    edgeAngle *= 0.85;
+                    edgeAngle *= 0.9;
                 }
 
-                // Carving creates tight turns when edging
+                // Carving affects turn rate
                 if (Math.abs(edgeAngle) > 0.1) {
-                    const carveTurn = edgeAngle * speed * 0.015;
-                    playerRotation += carveTurn * deltaTime;
-
-                    // Carving redirects velocity
-                    const currentVelMag = Math.sqrt(playerVelocity.x ** 2 + playerVelocity.z ** 2);
-                    const newDirX = -Math.sin(playerRotation);
-                    const newDirZ = -Math.cos(playerRotation);
-
-                    // Blend current velocity toward new direction
-                    playerVelocity.x = playerVelocity.x * 0.95 + newDirX * currentVelMag * 0.05;
-                    playerVelocity.z = playerVelocity.z * 0.95 + newDirZ * currentVelMag * 0.05;
+                    playerRotation += edgeAngle * speed * 0.01 * deltaTime;
                 }
 
             } else {
