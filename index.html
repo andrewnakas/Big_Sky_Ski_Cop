@@ -452,10 +452,12 @@
             }
 
             geometry.attributes.position.needsUpdate = true;
-            geometry.computeVertexNormals();
 
             // NOW rotate to make it horizontal (XZ plane with Y as height)
             geometry.rotateX(-Math.PI / 2);
+
+            // CRITICAL: Recompute normals AFTER rotation
+            geometry.computeVertexNormals();
 
             console.log(`✅ Terrain geometry created: ${segments}x${segments} = ${segments * segments} vertices`);
             console.log(`   Height range: ${Math.min(...heightData).toFixed(1)} to ${Math.max(...heightData).toFixed(1)}`);
@@ -463,11 +465,11 @@
             // Create BRIGHT material so we can see it!
             const material = new THREE.MeshBasicMaterial({
                 color: 0x00ff00, // BRIGHT GREEN - impossible to miss!
-                wireframe: false,
+                wireframe: true, // WIREFRAME so we can see the structure!
                 side: THREE.DoubleSide // Render both sides
             });
 
-            console.log('✅ Terrain material created (BRIGHT GREEN for visibility)');
+            console.log('✅ Terrain material created (BRIGHT GREEN WIREFRAME for visibility)');
 
             // Skip satellite imagery for now - it might be causing issues
             // We can add it back later once we confirm terrain is visible
@@ -732,7 +734,7 @@
                 }
             }
 
-            player.position.set(peakX, maxHeight + 2, peakZ);
+            player.position.set(peakX, maxHeight + 1, peakZ); // Start just 1 unit above terrain
             scene.add(player);
 
             console.log(`✅ Player spawned at Lone Peak summit (highest point), height: ${maxHeight.toFixed(1)} ft at position (${peakX.toFixed(1)}, ${peakZ.toFixed(1)})`);
@@ -926,10 +928,10 @@
 
             // Get terrain normal for realistic skiing
             const terrainHeight = getTerrainHeight(player.position.x, player.position.z);
-            const groundContact = Math.abs(player.position.y - terrainHeight) < 1;
+            const groundContact = Math.abs(player.position.y - terrainHeight) < 5; // More lenient
 
             if (playerUpdateCount < 3) {
-                console.log(`   Terrain height: ${terrainHeight.toFixed(1)}, Ground contact: ${groundContact}`);
+                console.log(`   Terrain height: ${terrainHeight.toFixed(1)}, Distance: ${Math.abs(player.position.y - terrainHeight).toFixed(1)}, Ground contact: ${groundContact}`);
                 playerUpdateCount++;
             }
 
