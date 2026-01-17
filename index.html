@@ -408,6 +408,8 @@
             // Hide loading screen
             document.getElementById('loading').style.display = 'none';
 
+            console.log('🎮 Game ready! Use WASD to ski, Space to jump, QE to carve!');
+
             // Start game loop
             animate();
         }
@@ -471,44 +473,105 @@
             addTreesAndObstacles();
         }
 
-        // Load height data from Terrarium tiles
+        // Load height data - Big Sky Lone Mountain profile
         async function loadHeightData(centerX, centerY, zoom) {
             const segments = config.terrain.segments;
             const heightData = new Array(segments * segments).fill(0);
 
-            console.log('🏔️ Generating terrain...');
+            console.log('🏔️ Generating Lone Mountain terrain...');
 
-            // Use procedural terrain (faster and more reliable than loading tiles)
+            // Lone Mountain actual stats:
+            // Peak: 11,166 ft
+            // Base: 7,500 ft
+            // Vertical drop: 3,666 ft
+            // We'll simulate this profile
+
+            const peakHeight = 120; // Scaled height for peak
+            const baseHeight = 0;
+
             for (let i = 0; i < segments; i++) {
                 for (let j = 0; j < segments; j++) {
                     const x = (j / segments - 0.5) * 2;
                     const z = (i / segments - 0.5) * 2;
-                    const distFromCenter = Math.sqrt(x * x + z * z);
 
-                    // Create mountain shape with multiple peaks
-                    let height = 40 * (1 - distFromCenter);
-                    height += Math.sin(x * 5) * 3;
-                    height += Math.cos(z * 5) * 3;
-                    height += Math.sin(x * 2 + z * 2) * 5;
-                    height = Math.max(0, height);
+                    // Distance from center (peak)
+                    const distFromPeak = Math.sqrt(x * x + z * z);
 
-                    // Add slope (higher at top/north, lower at bottom/south for skiing)
-                    height += (0.5 - i / segments) * 60;
+                    // Create Lone Mountain's distinctive peak shape
+                    // Sharp peak at top (north), gradual descent
+                    let height = peakHeight * Math.exp(-distFromPeak * 0.8);
 
-                    // Add some bumps for realism
-                    height += Math.random() * 2;
+                    // Add ridgelines - Lone Mountain has distinct ridges
+                    height += Math.sin(Math.atan2(z, x) * 3) * 8 * (1 - distFromPeak);
+
+                    // Main slope gradient (north to south)
+                    const slopeGradient = (0.7 - i / segments) * 80;
+                    height += slopeGradient;
+
+                    // Add bowl features (Big Sky has several bowls)
+                    const bowlX = x - 0.3;
+                    const bowlZ = z + 0.2;
+                    const bowlDist = Math.sqrt(bowlX * bowlX + bowlZ * bowlZ);
+                    if (bowlDist < 0.4) {
+                        height -= (0.4 - bowlDist) * 15; // Create bowl depression
+                    }
+
+                    // Add moguls and terrain variation
+                    height += Math.sin(x * 15) * Math.cos(z * 15) * 1.5;
+                    height += Math.sin(x * 8 + z * 8) * 2;
+
+                    // Natural terrain noise
+                    height += (Math.random() - 0.5) * 3;
+
+                    // Ensure no negative heights
+                    height = Math.max(baseHeight, height);
 
                     heightData[i * segments + j] = height;
                 }
             }
 
-            console.log('✅ Terrain generated');
+            console.log('✅ Lone Mountain terrain generated with peak, ridges, and bowls');
             return heightData;
         }
 
         // Add trees and obstacles
         function addTreesAndObstacles() {
-            const treeCount = 30; // Reduced for performance
+            // Add Lone Peak Tram station at the top
+            const tramGeometry = new THREE.BoxGeometry(15, 8, 10);
+            const tramMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 }); // Brown
+            const tramStation = new THREE.Mesh(tramGeometry, tramMaterial);
+            const tramX = 0;
+            const tramZ = -config.terrain.size * 0.35;
+            const tramY = getTerrainHeight(tramX, tramZ);
+            tramStation.position.set(tramX + 20, tramY + 4, tramZ);
+            tramStation.castShadow = true;
+            scene.add(tramStation);
+
+            // Add "CLOSED" run signs
+            const signPositions = [
+                { x: -15, z: tramZ + 20 },
+                { x: 15, z: tramZ + 20 },
+                { x: 0, z: tramZ + 25 }
+            ];
+
+            signPositions.forEach(pos => {
+                const signPost = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.3, 0.3, 6, 8),
+                    new THREE.MeshStandardMaterial({ color: 0x8B4513 })
+                );
+                const sign = new THREE.Mesh(
+                    new THREE.BoxGeometry(8, 4, 0.5),
+                    new THREE.MeshStandardMaterial({ color: 0xff0000 })
+                );
+                const signY = getTerrainHeight(pos.x, pos.z);
+                signPost.position.set(pos.x, signY + 3, pos.z);
+                sign.position.set(pos.x, signY + 5, pos.z);
+                scene.add(signPost);
+                scene.add(sign);
+            });
+
+            // Add trees on the slopes
+            const treeCount = 30;
             const treeGeometry = new THREE.ConeGeometry(2, 10, 8);
             const treeMaterial = new THREE.MeshStandardMaterial({ color: 0x1a5f1a });
 
@@ -523,10 +586,14 @@
                 tree.receiveShadow = true;
                 scene.add(tree);
             }
+
+            console.log('✅ Added Lone Peak Tram station and CLOSED run signs');
         }
 
         // Get terrain height at position
         function getTerrainHeight(x, z) {
+            if (!terrain) return 100; // Default height if terrain not loaded yet
+
             // Simple raycast down to find terrain height
             const raycaster = new THREE.Raycaster(
                 new THREE.Vector3(x, 1000, z),
@@ -536,7 +603,9 @@
             if (intersects.length > 0) {
                 return intersects[0].point.y;
             }
-            return 0;
+
+            // Fallback: return a high value at the edges
+            return 100;
         }
 
         // Create player (skier)
@@ -565,19 +634,21 @@
             player.add(skiLeft);
             player.add(skiRight);
             player.castShadow = true;
-            player.position.set(0, 100, -400); // Start at top of mountain
+
+            // Start at top of Lone Peak Tram (summit of Lone Mountain)
+            // This is the highest point - center of our terrain
+            const startX = 0;
+            const startZ = -config.terrain.size * 0.35; // Near the top/north
+            const startY = getTerrainHeight(startX, startZ) + 2;
+
+            player.position.set(startX, startY, startZ);
             scene.add(player);
 
-            // Physics body
-            const shape = new CANNON.Box(new CANNON.Vec3(0.5, 1, 0.5));
-            playerBody = new CANNON.Body({
-                mass: 175, // pounds
-                shape: shape,
-                linearDamping: 0.1,
-                angularDamping: 0.3
-            });
-            playerBody.position.set(0, 100, -400);
-            world.addBody(playerBody);
+            console.log(`✅ Player spawned at Lone Peak Tram summit, height: ${startY.toFixed(1)} (11,166 ft)`);
+
+            // Physics body (we don't actually use Cannon.js for terrain collision anymore)
+            // Just keeping this for reference
+            playerBody = null;
         }
 
         // Create a patroller
@@ -757,6 +828,7 @@
             if (groundContact) {
                 isAirborne = false;
                 player.position.y = terrainHeight + 1;
+                playerVelocity.y = 0; // Stop falling when on ground
 
                 // Gravity acceleration down slope
                 const slopeVector = getTerrainSlope(player.position.x, player.position.z);
