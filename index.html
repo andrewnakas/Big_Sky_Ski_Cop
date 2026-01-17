@@ -1,0 +1,1178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Big Sky Ski Cop - Escape the Patrol!</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            overflow: hidden;
+            background: #000;
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            color: white;
+            font-size: 14px;
+        }
+
+        #wantedLevel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 15px 25px;
+            border-radius: 10px;
+            border: 3px solid #ff0000;
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
+        }
+
+        .wanted-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #ff0000;
+            text-align: center;
+            margin-bottom: 10px;
+            letter-spacing: 2px;
+        }
+
+        .stars {
+            display: flex;
+            gap: 5px;
+            justify-content: center;
+        }
+
+        .star {
+            font-size: 24px;
+            color: #333;
+            text-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+        }
+
+        .star.active {
+            color: #ffd700;
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.8);
+            animation: pulse 0.5s ease-in-out;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.3); }
+        }
+
+        #stats {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            min-width: 200px;
+        }
+
+        .stat-line {
+            margin: 5px 0;
+            display: flex;
+            justify-content: space-between;
+            gap: 15px;
+        }
+
+        .stat-label {
+            color: #aaa;
+        }
+
+        .stat-value {
+            color: #fff;
+            font-weight: bold;
+        }
+
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            max-width: 300px;
+        }
+
+        #instructions h3 {
+            margin-bottom: 10px;
+            color: #ffd700;
+        }
+
+        #instructions p {
+            margin: 5px 0;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.95);
+            padding: 40px;
+            border-radius: 15px;
+            border: 3px solid #ff0000;
+            text-align: center;
+            display: none;
+            pointer-events: all;
+        }
+
+        #gameOver h1 {
+            font-size: 48px;
+            color: #ff0000;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px rgba(255, 0, 0, 0.8);
+        }
+
+        #gameOver p {
+            font-size: 18px;
+            margin: 10px 0;
+        }
+
+        #restartBtn {
+            margin-top: 20px;
+            padding: 15px 30px;
+            font-size: 18px;
+            background: #ff0000;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            pointer-events: all;
+            transition: all 0.3s;
+        }
+
+        #restartBtn:hover {
+            background: #cc0000;
+            transform: scale(1.05);
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.95);
+            padding: 40px;
+            border-radius: 15px;
+            text-align: center;
+            z-index: 1000;
+        }
+
+        .spinner {
+            border: 4px solid #333;
+            border-top: 4px solid #ffd700;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .patrol-alert {
+            position: absolute;
+            top: 120px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 0, 0, 0.9);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: bold;
+            display: none;
+            animation: slideDown 0.3s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                top: 80px;
+                opacity: 0;
+            }
+            to {
+                top: 120px;
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="loading">
+        <div class="spinner"></div>
+        <h2>Loading Big Sky Resort...</h2>
+        <p>Fetching Lone Mountain terrain data</p>
+    </div>
+
+    <div id="ui">
+        <div id="wantedLevel">
+            <div class="wanted-title">WANTED LEVEL</div>
+            <div class="stars">
+                <span class="star" id="star1">★</span>
+                <span class="star" id="star2">★</span>
+                <span class="star" id="star3">★</span>
+                <span class="star" id="star4">★</span>
+                <span class="star" id="star5">★</span>
+            </div>
+        </div>
+
+        <div id="stats">
+            <div class="stat-line">
+                <span class="stat-label">Speed:</span>
+                <span class="stat-value" id="speed">0 mph</span>
+            </div>
+            <div class="stat-line">
+                <span class="stat-label">Altitude:</span>
+                <span class="stat-value" id="altitude">11,166 ft</span>
+            </div>
+            <div class="stat-line">
+                <span class="stat-label">Patrol Evaded:</span>
+                <span class="stat-value" id="evaded">0</span>
+            </div>
+            <div class="stat-line">
+                <span class="stat-label">Distance:</span>
+                <span class="stat-value" id="distance">0 ft</span>
+            </div>
+        </div>
+
+        <div id="instructions">
+            <h3>Controls</h3>
+            <p><strong>W/S:</strong> Speed up / Slow down</p>
+            <p><strong>A/D:</strong> Turn left / right</p>
+            <p><strong>Q/E:</strong> Edge control (carve)</p>
+            <p><strong>Space:</strong> Jump</p>
+            <p><strong>Mouse:</strong> Look around</p>
+            <p style="margin-top: 10px; color: #ff6666;"><strong>CAUTION:</strong> All runs are closed! Ski Patrol is after you!</p>
+        </div>
+
+        <div class="patrol-alert" id="patrolAlert">
+            PATROL APPROACHING!
+        </div>
+
+        <div id="gameOver">
+            <h1>BUSTED!</h1>
+            <p id="arrestMessage">You were apprehended by Ski Patrol</p>
+            <p>Patrol Evaded: <span id="finalEvaded">0</span></p>
+            <p>Distance: <span id="finalDistance">0 ft</span></p>
+            <button id="restartBtn">Try Again</button>
+        </div>
+    </div>
+
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <!-- Cannon.js for physics -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+
+    <script>
+        // Game configuration
+        const config = {
+            bigSky: {
+                // Lone Mountain Peak coordinates
+                lat: 45.2849,
+                lon: -111.4008,
+                peakElevation: 11166, // feet
+                baseElevation: 7500   // feet
+            },
+            terrain: {
+                size: 2048,  // terrain grid size
+                segments: 256, // terrain detail
+                heightScale: 3.0, // vertical exaggeration
+                tileZoom: 13 // zoom level for terrain tiles
+            },
+            physics: {
+                gravity: -32.2, // ft/s² (adjusted for feet)
+                friction: 0.3,
+                restitution: 0.2
+            }
+        };
+
+        // Game state
+        let scene, camera, renderer, world;
+        let player, playerBody;
+        let terrain, terrainBody;
+        let patrollers = [];
+        let vehicles = [];
+        let wantedLevel = 0;
+        let evadedCount = 0;
+        let totalDistance = 0;
+        let gameActive = true;
+        let keys = {};
+        let mouseX = 0, mouseY = 0;
+
+        // Player physics state
+        let playerVelocity = { x: 0, y: 0, z: 0 };
+        let playerRotation = 0;
+        let playerPitch = 0;
+        let edgeAngle = 0; // for carving
+        let isAirborne = false;
+        let isRagdoll = false;
+
+        // Initialize the game
+        async function init() {
+            // Set up Three.js scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB); // Sky blue
+            scene.fog = new THREE.Fog(0x87CEEB, 500, 3000);
+
+            // Camera setup (third-person behind player)
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 5000);
+            camera.position.set(0, 10, 20);
+
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({
+                canvas: document.getElementById('gameCanvas'),
+                antialias: true
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(100, 200, 100);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.camera.left = -500;
+            directionalLight.shadow.camera.right = 500;
+            directionalLight.shadow.camera.top = 500;
+            directionalLight.shadow.camera.bottom = -500;
+            directionalLight.shadow.camera.far = 1000;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            scene.add(directionalLight);
+
+            // Initialize physics world
+            world = new CANNON.World();
+            world.gravity.set(0, config.physics.gravity, 0);
+            world.broadphase = new CANNON.NaiveBroadphase();
+            world.solver.iterations = 10;
+
+            // Load terrain data
+            await loadTerrain();
+
+            // Create player
+            createPlayer();
+
+            // Create initial patrol
+            setTimeout(() => {
+                wantedLevel = 1;
+                updateWantedLevel();
+                spawnPatroller();
+                showPatrolAlert("WANTED: Skiing on closed run!");
+            }, 2000);
+
+            // Event listeners
+            document.addEventListener('keydown', (e) => keys[e.code] = true);
+            document.addEventListener('keyup', (e) => keys[e.code] = false);
+            document.addEventListener('mousemove', onMouseMove);
+            document.getElementById('restartBtn').addEventListener('click', restartGame);
+
+            // Hide loading screen
+            document.getElementById('loading').style.display = 'none';
+
+            // Start game loop
+            animate();
+        }
+
+        // Load terrain from Terrarium tiles
+        async function loadTerrain() {
+            const { lat, lon } = config.bigSky;
+            const zoom = config.terrain.tileZoom;
+
+            // Convert lat/lon to tile coordinates
+            const n = Math.pow(2, zoom);
+            const xtile = Math.floor((lon + 180) / 360 * n);
+            const ytile = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n);
+
+            // Create terrain geometry
+            const geometry = new THREE.PlaneGeometry(
+                config.terrain.size,
+                config.terrain.size,
+                config.terrain.segments - 1,
+                config.terrain.segments - 1
+            );
+            geometry.rotateX(-Math.PI / 2);
+
+            // Load height data from Terrarium tiles
+            // We'll load a 3x3 grid of tiles for better coverage
+            const heightData = await loadHeightData(xtile, ytile, zoom);
+
+            // Apply height data to terrain
+            const vertices = geometry.attributes.position.array;
+            const segments = config.terrain.segments;
+
+            for (let i = 0; i < segments; i++) {
+                for (let j = 0; j < segments; j++) {
+                    const idx = (i * segments + j) * 3;
+                    const heightIdx = i * segments + j;
+
+                    if (heightData[heightIdx] !== undefined) {
+                        vertices[idx + 1] = heightData[heightIdx] * config.terrain.heightScale;
+                    }
+                }
+            }
+
+            geometry.attributes.position.needsUpdate = true;
+            geometry.computeVertexNormals();
+
+            // Create terrain material (snow with some variation)
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+
+            // Create snow texture with some variation
+            for (let i = 0; i < 512; i++) {
+                for (let j = 0; j < 512; j++) {
+                    const noise = Math.random() * 30;
+                    const brightness = 230 + noise;
+                    ctx.fillStyle = `rgb(${brightness}, ${brightness}, ${brightness + 10})`;
+                    ctx.fillRect(i, j, 1, 1);
+                }
+            }
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(20, 20);
+
+            const material = new THREE.MeshStandardMaterial({
+                map: texture,
+                roughness: 0.8,
+                metalness: 0.1
+            });
+
+            terrain = new THREE.Mesh(geometry, material);
+            terrain.receiveShadow = true;
+            scene.add(terrain);
+
+            // Create physics body for terrain
+            const terrainShape = new CANNON.Heightfield(heightData, {
+                elementSize: config.terrain.size / config.terrain.segments
+            });
+            terrainBody = new CANNON.Body({ mass: 0 });
+            terrainBody.addShape(terrainShape);
+            terrainBody.position.set(
+                -config.terrain.size / 2,
+                0,
+                -config.terrain.size / 2
+            );
+            terrainBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+            world.addBody(terrainBody);
+
+            // Add some trees and obstacles
+            addTreesAndObstacles();
+        }
+
+        // Load height data from Terrarium tiles
+        async function loadHeightData(centerX, centerY, zoom) {
+            const segments = config.terrain.segments;
+            const heightData = new Array(segments * segments).fill(0);
+
+            try {
+                // Load the center tile
+                const url = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${zoom}/${centerX}/${centerY}.png`;
+                const img = await loadImage(url);
+
+                // Create canvas to read pixel data
+                const canvas = document.createElement('canvas');
+                canvas.width = 256;
+                canvas.height = 256;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                const imageData = ctx.getImageData(0, 0, 256, 256);
+
+                // Convert Terrarium encoding to elevation
+                // Terrarium: height = (R * 256 + G + B / 256) - 32768
+                for (let i = 0; i < segments; i++) {
+                    for (let j = 0; j < segments; j++) {
+                        const imgX = Math.floor((j / segments) * 256);
+                        const imgY = Math.floor((i / segments) * 256);
+                        const pixelIdx = (imgY * 256 + imgX) * 4;
+
+                        const r = imageData.data[pixelIdx];
+                        const g = imageData.data[pixelIdx + 1];
+                        const b = imageData.data[pixelIdx + 2];
+
+                        // Convert to meters, then to feet
+                        const heightMeters = (r * 256 + g + b / 256) - 32768;
+                        const heightFeet = heightMeters * 3.28084;
+
+                        // Normalize relative to base elevation
+                        heightData[i * segments + j] = (heightFeet - config.bigSky.baseElevation) / 10;
+                    }
+                }
+            } catch (error) {
+                console.warn('Could not load terrain data, using procedural terrain');
+                // Fallback: create a sloped mountain
+                for (let i = 0; i < segments; i++) {
+                    for (let j = 0; j < segments; j++) {
+                        const x = (j / segments - 0.5) * 2;
+                        const z = (i / segments - 0.5) * 2;
+                        const distFromCenter = Math.sqrt(x * x + z * z);
+
+                        // Create mountain shape
+                        let height = 40 * (1 - distFromCenter);
+                        height += Math.sin(x * 5) * 2;
+                        height += Math.cos(z * 5) * 2;
+                        height = Math.max(0, height);
+
+                        // Add slope (higher at top/north)
+                        height += (0.5 - i / segments) * 50;
+
+                        heightData[i * segments + j] = height;
+                    }
+                }
+            }
+
+            return heightData;
+        }
+
+        // Helper to load images
+        function loadImage(url) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => resolve(img);
+                img.onerror = reject;
+                img.src = url;
+            });
+        }
+
+        // Add trees and obstacles
+        function addTreesAndObstacles() {
+            const treeCount = 100;
+            const treeGeometry = new THREE.ConeGeometry(2, 10, 8);
+            const treeMaterial = new THREE.MeshStandardMaterial({ color: 0x1a5f1a });
+
+            for (let i = 0; i < treeCount; i++) {
+                const x = (Math.random() - 0.5) * config.terrain.size * 0.8;
+                const z = (Math.random() - 0.5) * config.terrain.size * 0.8;
+                const y = getTerrainHeight(x, z);
+
+                const tree = new THREE.Mesh(treeGeometry, treeMaterial);
+                tree.position.set(x, y + 5, z);
+                tree.castShadow = true;
+                tree.receiveShadow = true;
+                scene.add(tree);
+            }
+        }
+
+        // Get terrain height at position
+        function getTerrainHeight(x, z) {
+            // Simple raycast down to find terrain height
+            const raycaster = new THREE.Raycaster(
+                new THREE.Vector3(x, 1000, z),
+                new THREE.Vector3(0, -1, 0)
+            );
+            const intersects = raycaster.intersectObject(terrain);
+            if (intersects.length > 0) {
+                return intersects[0].point.y;
+            }
+            return 0;
+        }
+
+        // Create player (skier)
+        function createPlayer() {
+            // Player visual (simple skier)
+            const bodyGeometry = new THREE.CylinderGeometry(0.5, 0.5, 2, 8);
+            const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x0066cc });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+
+            const headGeometry = new THREE.SphereGeometry(0.4, 8, 8);
+            const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffdbac });
+            const head = new THREE.Mesh(headGeometry, headMaterial);
+            head.position.y = 1.4;
+
+            // Skis
+            const skiGeometry = new THREE.BoxGeometry(0.2, 0.1, 2.5);
+            const skiMaterial = new THREE.MeshStandardMaterial({ color: 0xff6600 });
+            const skiLeft = new THREE.Mesh(skiGeometry, skiMaterial);
+            const skiRight = new THREE.Mesh(skiGeometry, skiMaterial);
+            skiLeft.position.set(-0.3, -1.2, 0);
+            skiRight.position.set(0.3, -1.2, 0);
+
+            player = new THREE.Group();
+            player.add(body);
+            player.add(head);
+            player.add(skiLeft);
+            player.add(skiRight);
+            player.castShadow = true;
+            player.position.set(0, 100, -400); // Start at top of mountain
+            scene.add(player);
+
+            // Physics body
+            const shape = new CANNON.Box(new CANNON.Vec3(0.5, 1, 0.5));
+            playerBody = new CANNON.Body({
+                mass: 175, // pounds
+                shape: shape,
+                linearDamping: 0.1,
+                angularDamping: 0.3
+            });
+            playerBody.position.set(0, 100, -400);
+            world.addBody(playerBody);
+        }
+
+        // Create a patroller
+        function spawnPatroller() {
+            const patrollerGroup = new THREE.Group();
+
+            // Patrol uniform (black and green)
+            const bodyGeometry = new THREE.CylinderGeometry(0.5, 0.5, 2, 8);
+            const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x003300 }); // Dark green
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+
+            const headGeometry = new THREE.SphereGeometry(0.4, 8, 8);
+            const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffdbac });
+            const head = new THREE.Mesh(headGeometry, headMaterial);
+            head.position.y = 1.4;
+
+            // Black vest
+            const vestGeometry = new THREE.CylinderGeometry(0.6, 0.6, 1, 8);
+            const vestMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 });
+            const vest = new THREE.Mesh(vestGeometry, vestMaterial);
+            vest.position.y = 0.5;
+
+            patrollerGroup.add(body);
+            patrollerGroup.add(head);
+            patrollerGroup.add(vest);
+
+            // Spawn ahead of player
+            const spawnDistance = 100 + Math.random() * 50;
+            const spawnX = player.position.x + (Math.random() - 0.5) * 50;
+            const spawnZ = player.position.z - spawnDistance;
+            const spawnY = getTerrainHeight(spawnX, spawnZ) + 2;
+
+            patrollerGroup.position.set(spawnX, spawnY, spawnZ);
+            patrollerGroup.castShadow = true;
+            scene.add(patrollerGroup);
+
+            const patroller = {
+                mesh: patrollerGroup,
+                velocity: { x: 0, y: 0, z: 0 },
+                state: 'blocking', // blocking, chasing, shooting
+                crashed: false
+            };
+
+            patrollers.push(patroller);
+        }
+
+        // Spawn vehicle (snowmobile or ski cat)
+        function spawnVehicle(type = 'snowmobile') {
+            const vehicleGroup = new THREE.Group();
+
+            if (type === 'snowmobile') {
+                // Simple snowmobile
+                const bodyGeometry = new THREE.BoxGeometry(1.5, 1, 3);
+                const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+                const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+                vehicleGroup.add(body);
+            } else {
+                // Ski cat (groomer)
+                const bodyGeometry = new THREE.BoxGeometry(4, 2, 5);
+                const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xffff00 });
+                const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+                vehicleGroup.add(body);
+            }
+
+            const spawnDistance = 150;
+            const spawnX = player.position.x + (Math.random() - 0.5) * 100;
+            const spawnZ = player.position.z - spawnDistance;
+            const spawnY = getTerrainHeight(spawnX, spawnZ) + 2;
+
+            vehicleGroup.position.set(spawnX, spawnY, spawnZ);
+            vehicleGroup.castShadow = true;
+            scene.add(vehicleGroup);
+
+            vehicles.push({
+                mesh: vehicleGroup,
+                type: type,
+                velocity: { x: 0, y: 0, z: 0 }
+            });
+        }
+
+        // Update wanted level
+        function updateWantedLevel() {
+            for (let i = 1; i <= 5; i++) {
+                const star = document.getElementById(`star${i}`);
+                if (i <= wantedLevel) {
+                    star.classList.add('active');
+                } else {
+                    star.classList.remove('active');
+                }
+            }
+
+            // Spawn more patrol based on wanted level
+            if (wantedLevel >= 2 && Math.random() < 0.3) {
+                spawnPatroller();
+            }
+            if (wantedLevel >= 3 && Math.random() < 0.2) {
+                spawnPatroller();
+            }
+            if (wantedLevel >= 4 && vehicles.length < 2) {
+                spawnVehicle('snowmobile');
+            }
+            if (wantedLevel >= 5 && vehicles.length < 3) {
+                spawnVehicle('skicat');
+            }
+        }
+
+        // Show patrol alert
+        function showPatrolAlert(message) {
+            const alert = document.getElementById('patrolAlert');
+            alert.textContent = message;
+            alert.style.display = 'block';
+            setTimeout(() => {
+                alert.style.display = 'none';
+            }, 3000);
+        }
+
+        // Update player physics and controls
+        function updatePlayer(deltaTime) {
+            if (!gameActive) return;
+
+            // Ragdoll physics after crash
+            if (isRagdoll) {
+                playerVelocity.y += config.physics.gravity * deltaTime;
+                player.position.x += playerVelocity.x * deltaTime;
+                player.position.y += playerVelocity.y * deltaTime;
+                player.position.z += playerVelocity.z * deltaTime;
+
+                // Tumble
+                player.rotation.x += deltaTime * 5;
+                player.rotation.z += deltaTime * 3;
+
+                const terrainHeight = getTerrainHeight(player.position.x, player.position.z);
+                if (player.position.y < terrainHeight + 0.5) {
+                    player.position.y = terrainHeight + 0.5;
+                    playerVelocity.x *= 0.8;
+                    playerVelocity.z *= 0.8;
+                    playerVelocity.y *= -0.3;
+
+                    // Stop after losing momentum
+                    if (Math.abs(playerVelocity.x) < 1 && Math.abs(playerVelocity.z) < 1) {
+                        setTimeout(() => {
+                            arrestPlayer("Crashed and couldn't recover!");
+                        }, 1000);
+                    }
+                }
+
+                // Update camera to watch ragdoll
+                const camDistance = 20;
+                const camHeight = 10;
+                camera.position.x = player.position.x + camDistance;
+                camera.position.y = player.position.y + camHeight;
+                camera.position.z = player.position.z + camDistance;
+                camera.lookAt(player.position);
+                return;
+            }
+
+            const speed = Math.sqrt(
+                playerVelocity.x ** 2 +
+                playerVelocity.z ** 2
+            ) * 0.681818; // Convert ft/s to mph
+
+            // Get terrain normal for realistic skiing
+            const terrainHeight = getTerrainHeight(player.position.x, player.position.z);
+            const groundContact = Math.abs(player.position.y - terrainHeight) < 1;
+
+            // Crash detection - too fast landing or hitting obstacles
+            if (!isAirborne && groundContact && Math.abs(playerVelocity.y) > 20) {
+                triggerRagdoll();
+                return;
+            }
+            if (speed > 60 && Math.random() < 0.001) {
+                // Random wipeout at high speeds
+                triggerRagdoll();
+                return;
+            }
+
+            if (groundContact) {
+                isAirborne = false;
+                player.position.y = terrainHeight + 1;
+
+                // Gravity acceleration down slope
+                const slopeVector = getTerrainSlope(player.position.x, player.position.z);
+                const gravityAccel = 15; // ft/s²
+
+                playerVelocity.z += slopeVector.z * gravityAccel * deltaTime;
+                playerVelocity.x += slopeVector.x * gravityAccel * deltaTime;
+
+                // Controls
+                if (keys['KeyW']) {
+                    // Speed up (push)
+                    const pushForce = 10;
+                    playerVelocity.z -= Math.cos(playerRotation) * pushForce * deltaTime;
+                    playerVelocity.x -= Math.sin(playerRotation) * pushForce * deltaTime;
+                }
+                if (keys['KeyS']) {
+                    // Slow down (pizza/brake)
+                    playerVelocity.x *= 0.95;
+                    playerVelocity.z *= 0.95;
+                }
+                if (keys['KeyA']) {
+                    playerRotation += 2 * deltaTime;
+                }
+                if (keys['KeyD']) {
+                    playerRotation -= 2 * deltaTime;
+                }
+                if (keys['KeyQ']) {
+                    edgeAngle = Math.min(edgeAngle + deltaTime * 2, 0.5);
+                }
+                if (keys['KeyE']) {
+                    edgeAngle = Math.max(edgeAngle - deltaTime * 2, -0.5);
+                } else if (!keys['KeyQ']) {
+                    edgeAngle *= 0.9;
+                }
+
+                // Edge control affects turning
+                const edgeTurn = edgeAngle * speed * 0.01;
+                playerRotation += edgeTurn * deltaTime;
+
+                // Friction
+                const friction = 0.98;
+                playerVelocity.x *= friction;
+                playerVelocity.z *= friction;
+
+            } else {
+                // Airborne
+                isAirborne = true;
+                playerVelocity.y += config.physics.gravity * deltaTime;
+
+                // Air control
+                if (keys['KeyA']) {
+                    playerRotation += 1 * deltaTime;
+                }
+                if (keys['KeyD']) {
+                    playerRotation -= 1 * deltaTime;
+                }
+            }
+
+            // Jump
+            if (keys['Space'] && groundContact && !isAirborne) {
+                playerVelocity.y = 15; // Jump velocity
+                isAirborne = true;
+            }
+
+            // Update position
+            player.position.x += playerVelocity.x * deltaTime;
+            player.position.y += playerVelocity.y * deltaTime;
+            player.position.z += playerVelocity.z * deltaTime;
+
+            // Update rotation
+            player.rotation.y = playerRotation;
+            player.rotation.z = edgeAngle;
+
+            // Update camera (third person)
+            const camDistance = 15;
+            const camHeight = 8;
+            camera.position.x = player.position.x + Math.sin(playerRotation) * camDistance;
+            camera.position.y = player.position.y + camHeight;
+            camera.position.z = player.position.z + Math.cos(playerRotation) * camDistance;
+            camera.lookAt(player.position);
+
+            // Update stats
+            document.getElementById('speed').textContent = `${speed.toFixed(1)} mph`;
+            document.getElementById('altitude').textContent = `${(config.bigSky.baseElevation + terrainHeight * 10).toFixed(0)} ft`;
+            document.getElementById('distance').textContent = `${totalDistance.toFixed(0)} ft`;
+
+            // Track distance
+            const distanceMoved = Math.sqrt(
+                playerVelocity.x ** 2 + playerVelocity.z ** 2
+            ) * deltaTime;
+            totalDistance += distanceMoved;
+
+            // Increase wanted level based on distance and evaded
+            if (totalDistance > 500 && wantedLevel < 2) {
+                wantedLevel = 2;
+                updateWantedLevel();
+                showPatrolAlert("Wanted level increased!");
+            }
+            if (evadedCount > 2 && wantedLevel < 3) {
+                wantedLevel = 3;
+                updateWantedLevel();
+                showPatrolAlert("Multiple patrol units responding!");
+            }
+            if (evadedCount > 5 && wantedLevel < 4) {
+                wantedLevel = 4;
+                updateWantedLevel();
+                showPatrolAlert("Snowmobiles deployed!");
+            }
+            if (evadedCount > 8 && wantedLevel < 5) {
+                wantedLevel = 5;
+                updateWantedLevel();
+                showPatrolAlert("Ski cats incoming!");
+            }
+        }
+
+        // Get terrain slope
+        function getTerrainSlope(x, z) {
+            const delta = 2;
+            const h1 = getTerrainHeight(x, z);
+            const h2 = getTerrainHeight(x, z - delta);
+            const h3 = getTerrainHeight(x + delta, z);
+
+            return {
+                x: (h3 - h1) / delta * 0.1,
+                z: (h2 - h1) / delta * 0.1
+            };
+        }
+
+        // Update patrollers AI
+        function updatePatrollers(deltaTime) {
+            patrollers.forEach((patroller, index) => {
+                if (patroller.crashed) return;
+
+                const dx = player.position.x - patroller.mesh.position.x;
+                const dz = player.position.z - patroller.mesh.position.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+
+                // Update AI behavior based on wanted level and state
+                if (distance < 5) {
+                    // Close enough to arrest
+                    arrestPlayer("Tackled by ski patrol!");
+                    return;
+                }
+
+                if (wantedLevel <= 2) {
+                    // Just ski in front and try to block
+                    patroller.state = 'blocking';
+                    const targetX = player.position.x + (Math.random() - 0.5) * 10;
+                    const targetZ = player.position.z - 30;
+
+                    const dirX = targetX - patroller.mesh.position.x;
+                    const dirZ = targetZ - patroller.mesh.position.z;
+                    const dist = Math.sqrt(dirX * dirX + dirZ * dirZ);
+
+                    if (dist > 1) {
+                        patroller.velocity.x = (dirX / dist) * 20;
+                        patroller.velocity.z = (dirZ / dist) * 20;
+                    }
+                } else {
+                    // Chase player directly
+                    patroller.state = 'chasing';
+                    const dirX = dx / distance;
+                    const dirZ = dz / distance;
+
+                    patroller.velocity.x = dirX * 25;
+                    patroller.velocity.z = dirZ * 25;
+
+                    // Shoot tazers at level 3+
+                    if (wantedLevel >= 3 && distance < 50 && Math.random() < 0.01) {
+                        shootTazer(patroller);
+                    }
+                }
+
+                // Update position
+                const terrainY = getTerrainHeight(
+                    patroller.mesh.position.x,
+                    patroller.mesh.position.z
+                );
+
+                patroller.mesh.position.x += patroller.velocity.x * deltaTime;
+                patroller.mesh.position.z += patroller.velocity.z * deltaTime;
+                patroller.mesh.position.y = terrainY + 2;
+
+                // Face movement direction
+                patroller.mesh.rotation.y = Math.atan2(patroller.velocity.x, patroller.velocity.z);
+
+                // Check collision with player (player can make them crash)
+                if (distance < 3 &&
+                    Math.abs(player.position.x - patroller.mesh.position.x) > 1) {
+                    // Patroller crashed!
+                    patroller.crashed = true;
+                    patroller.mesh.rotation.x = Math.PI / 2; // Fall over
+                    evadedCount++;
+                    document.getElementById('evaded').textContent = evadedCount;
+                    showPatrolAlert("Patrol crashed!");
+
+                    // Remove after a while
+                    setTimeout(() => {
+                        scene.remove(patroller.mesh);
+                        patrollers.splice(index, 1);
+                    }, 3000);
+                }
+
+                // Spawn new patrollers occasionally
+                if (patrollers.length < wantedLevel * 2 && Math.random() < 0.005) {
+                    spawnPatroller();
+                }
+            });
+        }
+
+        // Shoot tazer
+        function shootTazer(patroller) {
+            const tazerGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+            const tazerMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+            const tazer = new THREE.Mesh(tazerGeometry, tazerMaterial);
+
+            tazer.position.copy(patroller.mesh.position);
+            scene.add(tazer);
+
+            // Shoot towards player
+            const dx = player.position.x - tazer.position.x;
+            const dz = player.position.z - tazer.position.z;
+            const distance = Math.sqrt(dx * dx + dz * dz);
+
+            const velocity = {
+                x: (dx / distance) * 50,
+                y: 5,
+                z: (dz / distance) * 50
+            };
+
+            // Animate tazer
+            const tazerInterval = setInterval(() => {
+                velocity.y -= 1;
+                tazer.position.x += velocity.x * 0.016;
+                tazer.position.y += velocity.y * 0.016;
+                tazer.position.z += velocity.z * 0.016;
+
+                // Check hit
+                const hitDist = Math.sqrt(
+                    (tazer.position.x - player.position.x) ** 2 +
+                    (tazer.position.y - player.position.y) ** 2 +
+                    (tazer.position.z - player.position.z) ** 2
+                );
+
+                if (hitDist < 2) {
+                    clearInterval(tazerInterval);
+                    scene.remove(tazer);
+                    arrestPlayer("Hit by tazer!");
+                } else if (tazer.position.y < 0) {
+                    clearInterval(tazerInterval);
+                    scene.remove(tazer);
+                }
+            }, 16);
+        }
+
+        // Update vehicles
+        function updateVehicles(deltaTime) {
+            vehicles.forEach(vehicle => {
+                const dx = player.position.x - vehicle.mesh.position.x;
+                const dz = player.position.z - vehicle.mesh.position.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+
+                if (distance < 5) {
+                    arrestPlayer(`Rammed by ${vehicle.type}!`);
+                    return;
+                }
+
+                // Chase player aggressively
+                const speed = vehicle.type === 'skicat' ? 35 : 45;
+                const dirX = dx / distance;
+                const dirZ = dz / distance;
+
+                vehicle.velocity.x = dirX * speed;
+                vehicle.velocity.z = dirZ * speed;
+
+                // Update position
+                const terrainY = getTerrainHeight(
+                    vehicle.mesh.position.x,
+                    vehicle.mesh.position.z
+                );
+
+                vehicle.mesh.position.x += vehicle.velocity.x * deltaTime;
+                vehicle.mesh.position.z += vehicle.velocity.z * deltaTime;
+                vehicle.mesh.position.y = terrainY + 2;
+
+                // Face movement direction
+                vehicle.mesh.rotation.y = Math.atan2(vehicle.velocity.x, vehicle.velocity.z);
+            });
+        }
+
+        // Trigger ragdoll physics
+        function triggerRagdoll() {
+            if (isRagdoll) return;
+            isRagdoll = true;
+            showPatrolAlert("CRASH! Try to recover...");
+
+            // Add some random tumble velocity
+            playerVelocity.y = 10;
+            playerVelocity.x *= 0.5;
+            playerVelocity.z *= 0.5;
+        }
+
+        // Arrest player (game over)
+        function arrestPlayer(message) {
+            gameActive = false;
+            document.getElementById('arrestMessage').textContent = message;
+            document.getElementById('finalEvaded').textContent = evadedCount;
+            document.getElementById('finalDistance').textContent = totalDistance.toFixed(0);
+            document.getElementById('gameOver').style.display = 'block';
+        }
+
+        // Mouse movement
+        function onMouseMove(event) {
+            mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+            mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+        }
+
+        // Restart game
+        function restartGame() {
+            location.reload();
+        }
+
+        // Main animation loop
+        let lastTime = performance.now();
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const currentTime = performance.now();
+            const deltaTime = (currentTime - lastTime) / 1000;
+            lastTime = currentTime;
+
+            if (gameActive) {
+                // Update physics
+                world.step(1 / 60, deltaTime, 3);
+
+                // Update game objects
+                updatePlayer(deltaTime);
+                updatePatrollers(deltaTime);
+                updateVehicles(deltaTime);
+            }
+
+            // Render
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Start the game
+        init();
+    </script>
+</body>
+</html>
