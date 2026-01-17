@@ -455,9 +455,25 @@
             geometry.attributes.position.needsUpdate = true;
             geometry.computeVertexNormals();
 
-            // Create simple snow material
+            // Load actual Big Sky winter satellite imagery
+            const textureLoader = new THREE.TextureLoader();
+
+            // Use satellite imagery from Big Sky area - winter view
+            // This loads a real satellite tile of the Big Sky region
+            const satelliteTexture = textureLoader.load(
+                `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${ytile}/${xtile}`,
+                function (texture) {
+                    console.log('✅ Satellite imagery loaded');
+                },
+                undefined,
+                function (err) {
+                    console.warn('Could not load satellite imagery, using white snow');
+                }
+            );
+
             const material = new THREE.MeshStandardMaterial({
-                color: 0xf0f0f0,
+                map: satelliteTexture,
+                color: 0xffffff, // Tint it white for snow
                 roughness: 0.8,
                 metalness: 0.1
             });
@@ -536,22 +552,38 @@
 
         // Add trees and obstacles
         function addTreesAndObstacles() {
-            // Add Lone Peak Tram station at the top
+            // Find the peak to place tram station there
+            let maxHeight = 0;
+            let peakX = 0;
+            let peakZ = 0;
+
+            const searchSize = config.terrain.size * 0.4;
+            const searchStep = 20;
+
+            for (let x = -searchSize; x < searchSize; x += searchStep) {
+                for (let z = -searchSize; z < searchSize; z += searchStep) {
+                    const h = getTerrainHeight(x, z);
+                    if (h > maxHeight) {
+                        maxHeight = h;
+                        peakX = x;
+                        peakZ = z;
+                    }
+                }
+            }
+
+            // Add Lone Peak Tram station at the summit
             const tramGeometry = new THREE.BoxGeometry(15, 8, 10);
             const tramMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 }); // Brown
             const tramStation = new THREE.Mesh(tramGeometry, tramMaterial);
-            const tramX = 0;
-            const tramZ = -config.terrain.size * 0.35;
-            const tramY = getTerrainHeight(tramX, tramZ);
-            tramStation.position.set(tramX + 20, tramY + 4, tramZ);
+            tramStation.position.set(peakX + 20, maxHeight + 4, peakZ);
             tramStation.castShadow = true;
             scene.add(tramStation);
 
-            // Add "CLOSED" run signs
+            // Add "CLOSED" run signs at the peak
             const signPositions = [
-                { x: -15, z: tramZ + 20 },
-                { x: 15, z: tramZ + 20 },
-                { x: 0, z: tramZ + 25 }
+                { x: peakX - 15, z: peakZ + 20 },
+                { x: peakX + 15, z: peakZ + 20 },
+                { x: peakX, z: peakZ + 25 }
             ];
 
             signPositions.forEach(pos => {
@@ -635,16 +667,30 @@
             player.add(skiRight);
             player.castShadow = true;
 
-            // Start at top of Lone Peak Tram (summit of Lone Mountain)
-            // This is the highest point - center of our terrain
-            const startX = 0;
-            const startZ = -config.terrain.size * 0.35; // Near the top/north
-            const startY = getTerrainHeight(startX, startZ) + 2;
+            // Start at the absolute peak of Lone Mountain
+            // Find the highest point on the terrain
+            let maxHeight = 0;
+            let peakX = 0;
+            let peakZ = 0;
 
-            player.position.set(startX, startY, startZ);
+            const searchSize = config.terrain.size * 0.4;
+            const searchStep = 20;
+
+            for (let x = -searchSize; x < searchSize; x += searchStep) {
+                for (let z = -searchSize; z < searchSize; z += searchStep) {
+                    const h = getTerrainHeight(x, z);
+                    if (h > maxHeight) {
+                        maxHeight = h;
+                        peakX = x;
+                        peakZ = z;
+                    }
+                }
+            }
+
+            player.position.set(peakX, maxHeight + 2, peakZ);
             scene.add(player);
 
-            console.log(`✅ Player spawned at Lone Peak Tram summit, height: ${startY.toFixed(1)} (11,166 ft)`);
+            console.log(`✅ Player spawned at Lone Peak summit (highest point), height: ${maxHeight.toFixed(1)} ft at position (${peakX}, ${peakZ})`);
 
             // Physics body (we don't actually use Cannon.js for terrain collision anymore)
             // Just keeping this for reference
@@ -675,10 +721,10 @@
             patrollerGroup.add(head);
             patrollerGroup.add(vest);
 
-            // Spawn ahead of player
-            const spawnDistance = 100 + Math.random() * 50;
-            const spawnX = player.position.x + (Math.random() - 0.5) * 50;
-            const spawnZ = player.position.z - spawnDistance;
+            // Spawn ahead of player on their path
+            const spawnDistance = 40 + Math.random() * 40; // Closer spawn
+            const spawnX = player.position.x + (Math.random() - 0.5) * 30;
+            const spawnZ = player.position.z + playerVelocity.z * 2 - spawnDistance; // Predict path
             const spawnY = getTerrainHeight(spawnX, spawnZ) + 2;
 
             patrollerGroup.position.set(spawnX, spawnY, spawnZ);
@@ -967,34 +1013,43 @@
                 const distance = Math.sqrt(dx * dx + dz * dz);
 
                 // Update AI behavior based on wanted level and state
-                if (distance < 5) {
+                if (distance < 8) {
                     // Close enough to arrest
                     arrestPlayer("Tackled by ski patrol!");
                     return;
                 }
 
+                // Get player speed to match it
+                const playerSpeed = Math.sqrt(
+                    playerVelocity.x ** 2 + playerVelocity.z ** 2
+                );
+
                 if (wantedLevel <= 2) {
-                    // Just ski in front and try to block
+                    // Ski in front and try to block - but faster
                     patroller.state = 'blocking';
-                    const targetX = player.position.x + (Math.random() - 0.5) * 10;
-                    const targetZ = player.position.z - 30;
+                    const targetX = player.position.x + (Math.random() - 0.5) * 20;
+                    const targetZ = player.position.z - 50;
 
                     const dirX = targetX - patroller.mesh.position.x;
                     const dirZ = targetZ - patroller.mesh.position.z;
                     const dist = Math.sqrt(dirX * dirX + dirZ * dirZ);
 
                     if (dist > 1) {
-                        patroller.velocity.x = (dirX / dist) * 20;
-                        patroller.velocity.z = (dirZ / dist) * 20;
+                        // Match player speed + 20% to catch up
+                        const speed = Math.max(40, playerSpeed * 1.2);
+                        patroller.velocity.x = (dirX / dist) * speed;
+                        patroller.velocity.z = (dirZ / dist) * speed;
                     }
                 } else {
-                    // Chase player directly
+                    // Chase player directly - even faster
                     patroller.state = 'chasing';
                     const dirX = dx / distance;
                     const dirZ = dz / distance;
 
-                    patroller.velocity.x = dirX * 25;
-                    patroller.velocity.z = dirZ * 25;
+                    // Match player speed + 30% to catch up
+                    const speed = Math.max(50, playerSpeed * 1.3);
+                    patroller.velocity.x = dirX * speed;
+                    patroller.velocity.z = dirZ * speed;
 
                     // Shoot tazers at level 3+
                     if (wantedLevel >= 3 && distance < 50 && Math.random() < 0.01) {
@@ -1015,25 +1070,30 @@
                 // Face movement direction
                 patroller.mesh.rotation.y = Math.atan2(patroller.velocity.x, patroller.velocity.z);
 
-                // Check collision with player (player can make them crash)
-                if (distance < 3 &&
-                    Math.abs(player.position.x - patroller.mesh.position.x) > 1) {
-                    // Patroller crashed!
-                    patroller.crashed = true;
-                    patroller.mesh.rotation.x = Math.PI / 2; // Fall over
-                    evadedCount++;
-                    document.getElementById('evaded').textContent = evadedCount;
-                    showPatrolAlert("Patrol crashed!");
+                // Check collision with player (player can make them crash IF much faster)
+                if (distance < 4 && distance > 1.5) {
+                    const relativeSpeed = playerSpeed - Math.sqrt(
+                        patroller.velocity.x ** 2 + patroller.velocity.z ** 2
+                    );
 
-                    // Remove after a while
-                    setTimeout(() => {
-                        scene.remove(patroller.mesh);
-                        patrollers.splice(index, 1);
-                    }, 3000);
+                    // Only crash patrol if player is going much faster (sideswiped them)
+                    if (relativeSpeed > 15) {
+                        patroller.crashed = true;
+                        patroller.mesh.rotation.x = Math.PI / 2; // Fall over
+                        evadedCount++;
+                        document.getElementById('evaded').textContent = evadedCount;
+                        showPatrolAlert("Patrol crashed!");
+
+                        // Remove after a while
+                        setTimeout(() => {
+                            scene.remove(patroller.mesh);
+                            patrollers.splice(index, 1);
+                        }, 3000);
+                    }
                 }
 
-                // Spawn new patrollers occasionally
-                if (patrollers.length < wantedLevel * 2 && Math.random() < 0.005) {
+                // Spawn new patrollers more frequently
+                if (patrollers.length < wantedLevel * 3 && Math.random() < 0.01) {
                     spawnPatroller();
                 }
             });
