@@ -341,7 +341,7 @@
             // Set up Three.js scene
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x87CEEB); // Sky blue
-            scene.fog = new THREE.Fog(0x87CEEB, 500, 3000);
+            scene.fog = new THREE.Fog(0x87CEEB, 1000, 5000);
 
             console.log('✅ Scene created');
 
@@ -431,13 +431,11 @@
                 config.terrain.segments - 1,
                 config.terrain.segments - 1
             );
-            geometry.rotateX(-Math.PI / 2);
 
             // Load height data from Terrarium tiles
-            // We'll load a 3x3 grid of tiles for better coverage
             const heightData = await loadHeightData(xtile, ytile, zoom);
 
-            // Apply height data to terrain
+            // Apply height data to terrain BEFORE rotation
             const vertices = geometry.attributes.position.array;
             const segments = config.terrain.segments;
 
@@ -447,7 +445,8 @@
                     const heightIdx = i * segments + j;
 
                     if (heightData[heightIdx] !== undefined) {
-                        vertices[idx + 1] = heightData[heightIdx] * config.terrain.heightScale;
+                        // Apply height to Z component (which becomes Y after rotation)
+                        vertices[idx + 2] = heightData[heightIdx] * config.terrain.heightScale;
                     }
                 }
             }
@@ -455,17 +454,22 @@
             geometry.attributes.position.needsUpdate = true;
             geometry.computeVertexNormals();
 
+            // NOW rotate to make it horizontal (XZ plane with Y as height)
+            geometry.rotateX(-Math.PI / 2);
+
             console.log(`✅ Terrain geometry created: ${segments}x${segments} = ${segments * segments} vertices`);
             console.log(`   Height range: ${Math.min(...heightData).toFixed(1)} to ${Math.max(...heightData).toFixed(1)}`);
 
             // Create snow material first (guaranteed to work)
             const material = new THREE.MeshStandardMaterial({
-                color: 0xf5f5f5, // Snow white
-                roughness: 0.9,
-                metalness: 0.1
+                color: 0xffffff, // Pure white snow
+                roughness: 0.85,
+                metalness: 0.0,
+                flatShading: false,
+                side: THREE.DoubleSide // Render both sides
             });
 
-            console.log('✅ Snow material created');
+            console.log('✅ Snow material created (white, double-sided)');
 
             // Try to load satellite imagery in background (optional enhancement)
             const textureLoader = new THREE.TextureLoader();
@@ -491,11 +495,19 @@
 
             console.log(`✅ Terrain mesh added to scene at position (${terrain.position.x}, ${terrain.position.y}, ${terrain.position.z})`);
             console.log(`   Terrain visible: ${terrain.visible}, Vertices: ${geometry.attributes.position.count}`);
+            console.log(`   Terrain size: ${config.terrain.size} x ${config.terrain.size}`);
+            console.log(`   Terrain bounds: x(${-config.terrain.size/2} to ${config.terrain.size/2}), z(${-config.terrain.size/2} to ${config.terrain.size/2})`);
 
             // Add a grid helper for debugging
-            const gridHelper = new THREE.GridHelper(config.terrain.size, 20, 0x444444, 0x888888);
+            const gridHelper = new THREE.GridHelper(config.terrain.size, 20, 0xff0000, 0x00ff00);
+            gridHelper.position.y = 0.1; // Slightly above terrain base
             scene.add(gridHelper);
             console.log('✅ Grid helper added for reference');
+
+            // Add axis helper
+            const axisHelper = new THREE.AxesHelper(100);
+            scene.add(axisHelper);
+            console.log('✅ Axis helper added (Red=X, Green=Y, Blue=Z)');
 
             // Simplified physics - no heightfield (we use raycasting instead for better performance)
             console.log('✅ Terrain loaded successfully');
@@ -708,10 +720,11 @@
             console.log(`✅ Player spawned at Lone Peak summit (highest point), height: ${maxHeight.toFixed(1)} ft at position (${peakX}, ${peakZ})`);
 
             // Position camera to see the player and terrain
-            camera.position.set(peakX, maxHeight + 15, peakZ + 30);
-            camera.lookAt(peakX, maxHeight, peakZ);
+            camera.position.set(peakX, maxHeight + 20, peakZ + 40);
+            camera.lookAt(new THREE.Vector3(peakX, maxHeight, peakZ));
 
-            console.log(`✅ Camera positioned at (${camera.position.x}, ${camera.position.y}, ${camera.position.z})`);
+            console.log(`✅ Camera positioned at (${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)})`);
+            console.log(`   Camera looking at (${peakX.toFixed(1)}, ${maxHeight.toFixed(1)}, ${peakZ.toFixed(1)})`);
 
             // Physics body (we don't actually use Cannon.js for terrain collision anymore)
             // Just keeping this for reference
