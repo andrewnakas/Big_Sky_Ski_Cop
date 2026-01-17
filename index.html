@@ -460,16 +460,14 @@
             console.log(`✅ Terrain geometry created: ${segments}x${segments} = ${segments * segments} vertices`);
             console.log(`   Height range: ${Math.min(...heightData).toFixed(1)} to ${Math.max(...heightData).toFixed(1)}`);
 
-            // Create snow material first (guaranteed to work)
-            const material = new THREE.MeshStandardMaterial({
-                color: 0xeeeeee, // Light gray snow
-                roughness: 0.85,
-                metalness: 0.0,
-                wireframe: false, // Start solid
+            // Create BRIGHT material so we can see it!
+            const material = new THREE.MeshBasicMaterial({
+                color: 0x00ff00, // BRIGHT GREEN - impossible to miss!
+                wireframe: false,
                 side: THREE.DoubleSide // Render both sides
             });
 
-            console.log('✅ Snow material created (light gray, double-sided)');
+            console.log('✅ Terrain material created (BRIGHT GREEN for visibility)');
 
             // Skip satellite imagery for now - it might be causing issues
             // We can add it back later once we confirm terrain is visible
@@ -655,20 +653,35 @@
         }
 
         // Get terrain height at position
+        let heightCheckCount = 0;
         function getTerrainHeight(x, z) {
-            if (!terrain) return 100; // Default height if terrain not loaded yet
+            if (!terrain) {
+                console.warn('⚠️ getTerrainHeight called but terrain not loaded yet!');
+                return 100; // Default height if terrain not loaded yet
+            }
 
             // Simple raycast down to find terrain height
             const raycaster = new THREE.Raycaster(
-                new THREE.Vector3(x, 1000, z),
+                new THREE.Vector3(x, 10000, z), // Start way up
                 new THREE.Vector3(0, -1, 0)
             );
-            const intersects = raycaster.intersectObject(terrain);
+            const intersects = raycaster.intersectObject(terrain, true);
+
+            // Debug first few calls
+            if (heightCheckCount < 5) {
+                console.log(`🔍 Raycast at (${x.toFixed(1)}, ${z.toFixed(1)}): ${intersects.length} intersections`);
+                if (intersects.length > 0) {
+                    console.log(`   Hit at y=${intersects[0].point.y.toFixed(1)}`);
+                }
+                heightCheckCount++;
+            }
+
             if (intersects.length > 0) {
                 return intersects[0].point.y;
             }
 
             // Fallback: return a high value at the edges
+            console.warn(`⚠️ No terrain intersection at (${x.toFixed(1)}, ${z.toFixed(1)})`);
             return 100;
         }
 
@@ -724,12 +737,12 @@
 
             console.log(`✅ Player spawned at Lone Peak summit (highest point), height: ${maxHeight.toFixed(1)} ft at position (${peakX.toFixed(1)}, ${peakZ.toFixed(1)})`);
 
-            // Position camera FAR back to see the whole terrain
-            camera.position.set(peakX + 200, maxHeight + 300, peakZ + 400);
-            camera.lookAt(new THREE.Vector3(0, maxHeight / 2, 0)); // Look at middle of terrain
+            // Position camera behind and above player
+            camera.position.set(peakX, maxHeight + 50, peakZ + 80);
+            camera.lookAt(new THREE.Vector3(peakX, maxHeight, peakZ));
 
             console.log(`✅ Camera positioned at (${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)})`);
-            console.log(`   Camera looking at terrain center (0, ${(maxHeight / 2).toFixed(1)}, 0)`);
+            console.log(`   Camera looking at player at (${peakX.toFixed(1)}, ${maxHeight.toFixed(1)}, ${peakZ.toFixed(1)})`);
 
             // Add a big bright marker at player position so we can see where they are
             const markerGeometry = new THREE.SphereGeometry(10, 16, 16);
@@ -859,8 +872,16 @@
         }
 
         // Update player physics and controls
+        let playerUpdateCount = 0;
         function updatePlayer(deltaTime) {
             if (!gameActive) return;
+
+            // Debug first few frames
+            if (playerUpdateCount < 3) {
+                console.log(`\n🎮 Player Update #${playerUpdateCount}:`);
+                console.log(`   Position: (${player.position.x.toFixed(1)}, ${player.position.y.toFixed(1)}, ${player.position.z.toFixed(1)})`);
+                console.log(`   Velocity: (${playerVelocity.x.toFixed(1)}, ${playerVelocity.y.toFixed(1)}, ${playerVelocity.z.toFixed(1)})`);
+            }
 
             // Ragdoll physics after crash
             if (isRagdoll) {
@@ -906,6 +927,11 @@
             // Get terrain normal for realistic skiing
             const terrainHeight = getTerrainHeight(player.position.x, player.position.z);
             const groundContact = Math.abs(player.position.y - terrainHeight) < 1;
+
+            if (playerUpdateCount < 3) {
+                console.log(`   Terrain height: ${terrainHeight.toFixed(1)}, Ground contact: ${groundContact}`);
+                playerUpdateCount++;
+            }
 
             // Crash detection - too fast landing or hitting obstacles
             if (!isAirborne && groundContact && Math.abs(playerVelocity.y) > 20) {
