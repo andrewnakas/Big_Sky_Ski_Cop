@@ -302,7 +302,7 @@
             },
             terrain: {
                 size: 2048,  // terrain grid size
-                segments: 256, // terrain detail
+                segments: 64, // terrain detail (reduced for performance)
                 heightScale: 3.0, // vertical exaggeration
                 tileZoom: 13 // zoom level for terrain tiles
             },
@@ -336,10 +336,14 @@
 
         // Initialize the game
         async function init() {
+            console.log('🎮 Initializing Big Sky Ski Cop...');
+
             // Set up Three.js scene
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x87CEEB); // Sky blue
             scene.fog = new THREE.Fog(0x87CEEB, 500, 3000);
+
+            console.log('✅ Scene created');
 
             // Camera setup (third-person behind player)
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 5000);
@@ -371,16 +375,21 @@
             scene.add(directionalLight);
 
             // Initialize physics world
+            console.log('⚙️ Initializing physics...');
             world = new CANNON.World();
             world.gravity.set(0, config.physics.gravity, 0);
             world.broadphase = new CANNON.NaiveBroadphase();
             world.solver.iterations = 10;
+            console.log('✅ Physics ready');
 
             // Load terrain data
+            console.log('🏔️ Loading terrain...');
             await loadTerrain();
 
             // Create player
+            console.log('🎿 Creating player...');
             createPlayer();
+            console.log('✅ Player ready');
 
             // Create initial patrol
             setTimeout(() => {
@@ -444,29 +453,9 @@
             geometry.attributes.position.needsUpdate = true;
             geometry.computeVertexNormals();
 
-            // Create terrain material (snow with some variation)
-            const canvas = document.createElement('canvas');
-            canvas.width = 512;
-            canvas.height = 512;
-            const ctx = canvas.getContext('2d');
-
-            // Create snow texture with some variation
-            for (let i = 0; i < 512; i++) {
-                for (let j = 0; j < 512; j++) {
-                    const noise = Math.random() * 30;
-                    const brightness = 230 + noise;
-                    ctx.fillStyle = `rgb(${brightness}, ${brightness}, ${brightness + 10})`;
-                    ctx.fillRect(i, j, 1, 1);
-                }
-            }
-
-            const texture = new THREE.CanvasTexture(canvas);
-            texture.wrapS = THREE.RepeatWrapping;
-            texture.wrapT = THREE.RepeatWrapping;
-            texture.repeat.set(20, 20);
-
+            // Create simple snow material
             const material = new THREE.MeshStandardMaterial({
-                map: texture,
+                color: 0xf0f0f0,
                 roughness: 0.8,
                 metalness: 0.1
             });
@@ -475,21 +464,10 @@
             terrain.receiveShadow = true;
             scene.add(terrain);
 
-            // Create physics body for terrain
-            const terrainShape = new CANNON.Heightfield(heightData, {
-                elementSize: config.terrain.size / config.terrain.segments
-            });
-            terrainBody = new CANNON.Body({ mass: 0 });
-            terrainBody.addShape(terrainShape);
-            terrainBody.position.set(
-                -config.terrain.size / 2,
-                0,
-                -config.terrain.size / 2
-            );
-            terrainBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
-            world.addBody(terrainBody);
+            // Simplified physics - no heightfield (we use raycasting instead for better performance)
+            console.log('✅ Terrain loaded successfully');
 
-            // Add some trees and obstacles
+            // Add some trees
             addTreesAndObstacles();
         }
 
@@ -498,79 +476,39 @@
             const segments = config.terrain.segments;
             const heightData = new Array(segments * segments).fill(0);
 
-            try {
-                // Load the center tile
-                const url = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${zoom}/${centerX}/${centerY}.png`;
-                const img = await loadImage(url);
+            console.log('🏔️ Generating terrain...');
 
-                // Create canvas to read pixel data
-                const canvas = document.createElement('canvas');
-                canvas.width = 256;
-                canvas.height = 256;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0);
-                const imageData = ctx.getImageData(0, 0, 256, 256);
+            // Use procedural terrain (faster and more reliable than loading tiles)
+            for (let i = 0; i < segments; i++) {
+                for (let j = 0; j < segments; j++) {
+                    const x = (j / segments - 0.5) * 2;
+                    const z = (i / segments - 0.5) * 2;
+                    const distFromCenter = Math.sqrt(x * x + z * z);
 
-                // Convert Terrarium encoding to elevation
-                // Terrarium: height = (R * 256 + G + B / 256) - 32768
-                for (let i = 0; i < segments; i++) {
-                    for (let j = 0; j < segments; j++) {
-                        const imgX = Math.floor((j / segments) * 256);
-                        const imgY = Math.floor((i / segments) * 256);
-                        const pixelIdx = (imgY * 256 + imgX) * 4;
+                    // Create mountain shape with multiple peaks
+                    let height = 40 * (1 - distFromCenter);
+                    height += Math.sin(x * 5) * 3;
+                    height += Math.cos(z * 5) * 3;
+                    height += Math.sin(x * 2 + z * 2) * 5;
+                    height = Math.max(0, height);
 
-                        const r = imageData.data[pixelIdx];
-                        const g = imageData.data[pixelIdx + 1];
-                        const b = imageData.data[pixelIdx + 2];
+                    // Add slope (higher at top/north, lower at bottom/south for skiing)
+                    height += (0.5 - i / segments) * 60;
 
-                        // Convert to meters, then to feet
-                        const heightMeters = (r * 256 + g + b / 256) - 32768;
-                        const heightFeet = heightMeters * 3.28084;
+                    // Add some bumps for realism
+                    height += Math.random() * 2;
 
-                        // Normalize relative to base elevation
-                        heightData[i * segments + j] = (heightFeet - config.bigSky.baseElevation) / 10;
-                    }
-                }
-            } catch (error) {
-                console.warn('Could not load terrain data, using procedural terrain');
-                // Fallback: create a sloped mountain
-                for (let i = 0; i < segments; i++) {
-                    for (let j = 0; j < segments; j++) {
-                        const x = (j / segments - 0.5) * 2;
-                        const z = (i / segments - 0.5) * 2;
-                        const distFromCenter = Math.sqrt(x * x + z * z);
-
-                        // Create mountain shape
-                        let height = 40 * (1 - distFromCenter);
-                        height += Math.sin(x * 5) * 2;
-                        height += Math.cos(z * 5) * 2;
-                        height = Math.max(0, height);
-
-                        // Add slope (higher at top/north)
-                        height += (0.5 - i / segments) * 50;
-
-                        heightData[i * segments + j] = height;
-                    }
+                    heightData[i * segments + j] = height;
                 }
             }
 
+            console.log('✅ Terrain generated');
             return heightData;
-        }
-
-        // Helper to load images
-        function loadImage(url) {
-            return new Promise((resolve, reject) => {
-                const img = new Image();
-                img.crossOrigin = 'anonymous';
-                img.onload = () => resolve(img);
-                img.onerror = reject;
-                img.src = url;
-            });
         }
 
         // Add trees and obstacles
         function addTreesAndObstacles() {
-            const treeCount = 100;
+            const treeCount = 30; // Reduced for performance
             const treeGeometry = new THREE.ConeGeometry(2, 10, 8);
             const treeMaterial = new THREE.MeshStandardMaterial({ color: 0x1a5f1a });
 
