@@ -301,9 +301,9 @@
                 baseElevation: 7500   // feet
             },
             terrain: {
-                size: 2048,  // terrain grid size
-                segments: 64, // terrain detail (reduced for performance)
-                heightScale: 3.0, // vertical exaggeration
+                size: 8192,  // MUCH bigger terrain - 8km x 8km
+                segments: 128, // More detail for larger terrain
+                heightScale: 5.0, // More vertical exaggeration for dramatic slopes
                 tileZoom: 13 // zoom level for terrain tiles
             },
             physics: {
@@ -462,17 +462,33 @@
             console.log(`✅ Terrain geometry created: ${segments}x${segments} = ${segments * segments} vertices`);
             console.log(`   Height range: ${Math.min(...heightData).toFixed(1)} to ${Math.max(...heightData).toFixed(1)}`);
 
-            // Create BRIGHT material so we can see it!
-            const material = new THREE.MeshBasicMaterial({
-                color: 0x00ff00, // BRIGHT GREEN - impossible to miss!
-                wireframe: true, // WIREFRAME so we can see the structure!
-                side: THREE.DoubleSide // Render both sides
+            // Create realistic snow material
+            const material = new THREE.MeshStandardMaterial({
+                color: 0xffffff, // White snow base
+                roughness: 0.9,
+                metalness: 0.0,
+                wireframe: false, // Solid terrain
+                side: THREE.DoubleSide
             });
 
-            console.log('✅ Terrain material created (BRIGHT GREEN WIREFRAME for visibility)');
+            console.log('✅ Terrain material created (white snow)');
 
-            // Skip satellite imagery for now - it might be causing issues
-            // We can add it back later once we confirm terrain is visible
+            // Load satellite imagery for Big Sky
+            const textureLoader = new THREE.TextureLoader();
+            textureLoader.crossOrigin = 'anonymous';
+
+            textureLoader.load(
+                `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${ytile}/${xtile}`,
+                function (texture) {
+                    console.log('✅ Satellite imagery loaded successfully!');
+                    material.map = texture;
+                    material.needsUpdate = true;
+                },
+                undefined,
+                function (err) {
+                    console.warn('⚠️ Could not load satellite imagery, using white snow:', err);
+                }
+            );
 
             terrain = new THREE.Mesh(geometry, material);
             terrain.receiveShadow = true;
@@ -534,7 +550,7 @@
             // Vertical drop: 3,666 ft
             // We'll simulate this profile
 
-            const peakHeight = 120; // Scaled height for peak
+            const peakHeight = 300; // Scaled height for peak (bigger terrain = taller peaks)
             const baseHeight = 0;
 
             for (let i = 0; i < segments; i++) {
@@ -951,48 +967,98 @@
                 player.position.y = terrainHeight + 1;
                 playerVelocity.y = 0; // Stop falling when on ground
 
-                // Gravity acceleration down slope
+                // REALISTIC SKIING PHYSICS
                 const slopeVector = getTerrainSlope(player.position.x, player.position.z);
-                const gravityAccel = 15; // ft/s²
 
-                playerVelocity.z += slopeVector.z * gravityAccel * deltaTime;
-                playerVelocity.x += slopeVector.x * gravityAccel * deltaTime;
+                // Calculate slope angle (in radians)
+                const slopeAngle = Math.atan(Math.sqrt(slopeVector.x ** 2 + slopeVector.z ** 2));
+
+                // Gravitational component down the slope (realistic physics)
+                // F = m * g * sin(θ)
+                const gravityDownSlope = config.physics.gravity * Math.sin(slopeAngle);
+
+                // Friction force (opposes motion)
+                // F_friction = μ * m * g * cos(θ)
+                const normalForce = Math.abs(config.physics.gravity) * Math.cos(slopeAngle);
+                const currentSpeed = Math.sqrt(playerVelocity.x ** 2 + playerVelocity.z ** 2);
+
+                // Dynamic friction coefficient (depends on edge angle and snow conditions)
+                let frictionCoeff = 0.05; // Base friction (waxed skis on snow)
+
+                // Pizzaing (S key) increases friction dramatically
+                if (keys['KeyS']) {
+                    frictionCoeff = 0.3;
+                }
+
+                // Edge control (Q/E) reduces friction when carving
+                frictionCoeff -= Math.abs(edgeAngle) * 0.02;
+                frictionCoeff = Math.max(0.02, frictionCoeff);
+
+                const frictionForce = frictionCoeff * normalForce;
+
+                // Air resistance (increases with speed squared)
+                const airDensity = 0.002; // Simplified air resistance coefficient
+                const airResistance = airDensity * currentSpeed * currentSpeed;
+
+                // Net acceleration
+                const netAccel = Math.abs(gravityDownSlope) - frictionForce - airResistance;
+
+                // Apply acceleration in slope direction
+                if (slopeVector.x !== 0 || slopeVector.z !== 0) {
+                    const slopeMag = Math.sqrt(slopeVector.x ** 2 + slopeVector.z ** 2);
+                    const slopeDir = {
+                        x: slopeVector.x / slopeMag,
+                        z: slopeVector.z / slopeMag
+                    };
+
+                    playerVelocity.x += slopeDir.x * netAccel * deltaTime * 50;
+                    playerVelocity.z += slopeDir.z * netAccel * deltaTime * 50;
+                }
 
                 // Controls
                 if (keys['KeyW']) {
-                    // Speed up (push)
-                    const pushForce = 10;
-                    playerVelocity.z -= Math.cos(playerRotation) * pushForce * deltaTime;
-                    playerVelocity.x -= Math.sin(playerRotation) * pushForce * deltaTime;
+                    // Tuck/push - reduce air resistance, add slight push
+                    const tuckBonus = 5;
+                    const dirX = -Math.sin(playerRotation);
+                    const dirZ = -Math.cos(playerRotation);
+                    playerVelocity.x += dirX * tuckBonus * deltaTime;
+                    playerVelocity.z += dirZ * tuckBonus * deltaTime;
                 }
-                if (keys['KeyS']) {
-                    // Slow down (pizza/brake)
-                    playerVelocity.x *= 0.95;
-                    playerVelocity.z *= 0.95;
-                }
+                // S key is handled in friction calculation above
+
+                // Turning - speed affects turn rate
+                const turnRate = Math.max(0.5, 3.0 - speed * 0.02); // Slower turns at high speed
                 if (keys['KeyA']) {
-                    playerRotation += 2 * deltaTime;
+                    playerRotation += turnRate * deltaTime;
                 }
                 if (keys['KeyD']) {
-                    playerRotation -= 2 * deltaTime;
+                    playerRotation -= turnRate * deltaTime;
                 }
+
+                // Edge control for carving
                 if (keys['KeyQ']) {
-                    edgeAngle = Math.min(edgeAngle + deltaTime * 2, 0.5);
-                }
-                if (keys['KeyE']) {
-                    edgeAngle = Math.max(edgeAngle - deltaTime * 2, -0.5);
-                } else if (!keys['KeyQ']) {
-                    edgeAngle *= 0.9;
+                    edgeAngle = Math.min(edgeAngle + deltaTime * 3, 0.6);
+                } else if (keys['KeyE']) {
+                    edgeAngle = Math.max(edgeAngle - deltaTime * 3, -0.6);
+                } else {
+                    // Return to neutral
+                    edgeAngle *= 0.85;
                 }
 
-                // Edge control affects turning
-                const edgeTurn = edgeAngle * speed * 0.01;
-                playerRotation += edgeTurn * deltaTime;
+                // Carving creates tight turns when edging
+                if (Math.abs(edgeAngle) > 0.1) {
+                    const carveTurn = edgeAngle * speed * 0.015;
+                    playerRotation += carveTurn * deltaTime;
 
-                // Friction
-                const friction = 0.98;
-                playerVelocity.x *= friction;
-                playerVelocity.z *= friction;
+                    // Carving redirects velocity
+                    const currentVelMag = Math.sqrt(playerVelocity.x ** 2 + playerVelocity.z ** 2);
+                    const newDirX = -Math.sin(playerRotation);
+                    const newDirZ = -Math.cos(playerRotation);
+
+                    // Blend current velocity toward new direction
+                    playerVelocity.x = playerVelocity.x * 0.95 + newDirX * currentVelMag * 0.05;
+                    playerVelocity.z = playerVelocity.z * 0.95 + newDirZ * currentVelMag * 0.05;
+                }
 
             } else {
                 // Airborne
@@ -1023,9 +1089,9 @@
             player.rotation.y = playerRotation;
             player.rotation.z = edgeAngle;
 
-            // Update camera (third person)
-            const camDistance = 15;
-            const camHeight = 8;
+            // Update camera (third person) - farther back for bigger terrain
+            const camDistance = 30 + speed * 0.3; // Camera pulls back at high speed
+            const camHeight = 12 + speed * 0.1;
             camera.position.x = player.position.x + Math.sin(playerRotation) * camDistance;
             camera.position.y = player.position.y + camHeight;
             camera.position.z = player.position.z + Math.cos(playerRotation) * camDistance;
