@@ -358,11 +358,11 @@
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-            // Lighting
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            // Lighting - make it brighter so we can see the terrain
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
             scene.add(ambientLight);
 
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
             directionalLight.position.set(100, 200, 100);
             directionalLight.castShadow = true;
             directionalLight.shadow.camera.left = -500;
@@ -455,32 +455,47 @@
             geometry.attributes.position.needsUpdate = true;
             geometry.computeVertexNormals();
 
-            // Load actual Big Sky winter satellite imagery
-            const textureLoader = new THREE.TextureLoader();
+            console.log(`✅ Terrain geometry created: ${segments}x${segments} = ${segments * segments} vertices`);
+            console.log(`   Height range: ${Math.min(...heightData).toFixed(1)} to ${Math.max(...heightData).toFixed(1)}`);
 
-            // Use satellite imagery from Big Sky area - winter view
-            // This loads a real satellite tile of the Big Sky region
-            const satelliteTexture = textureLoader.load(
-                `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${ytile}/${xtile}`,
-                function (texture) {
-                    console.log('✅ Satellite imagery loaded');
-                },
-                undefined,
-                function (err) {
-                    console.warn('Could not load satellite imagery, using white snow');
-                }
-            );
-
+            // Create snow material first (guaranteed to work)
             const material = new THREE.MeshStandardMaterial({
-                map: satelliteTexture,
-                color: 0xffffff, // Tint it white for snow
-                roughness: 0.8,
+                color: 0xf5f5f5, // Snow white
+                roughness: 0.9,
                 metalness: 0.1
             });
 
+            console.log('✅ Snow material created');
+
+            // Try to load satellite imagery in background (optional enhancement)
+            const textureLoader = new THREE.TextureLoader();
+            textureLoader.crossOrigin = 'anonymous';
+
+            textureLoader.load(
+                `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${ytile}/${xtile}`,
+                function (texture) {
+                    console.log('✅ Satellite imagery loaded successfully!');
+                    material.map = texture;
+                    material.needsUpdate = true;
+                },
+                undefined,
+                function (err) {
+                    console.warn('⚠️ Could not load satellite imagery, using white snow:', err);
+                }
+            );
+
             terrain = new THREE.Mesh(geometry, material);
             terrain.receiveShadow = true;
+            terrain.castShadow = true;
             scene.add(terrain);
+
+            console.log(`✅ Terrain mesh added to scene at position (${terrain.position.x}, ${terrain.position.y}, ${terrain.position.z})`);
+            console.log(`   Terrain visible: ${terrain.visible}, Vertices: ${geometry.attributes.position.count}`);
+
+            // Add a grid helper for debugging
+            const gridHelper = new THREE.GridHelper(config.terrain.size, 20, 0x444444, 0x888888);
+            scene.add(gridHelper);
+            console.log('✅ Grid helper added for reference');
 
             // Simplified physics - no heightfield (we use raycasting instead for better performance)
             console.log('✅ Terrain loaded successfully');
@@ -691,6 +706,12 @@
             scene.add(player);
 
             console.log(`✅ Player spawned at Lone Peak summit (highest point), height: ${maxHeight.toFixed(1)} ft at position (${peakX}, ${peakZ})`);
+
+            // Position camera to see the player and terrain
+            camera.position.set(peakX, maxHeight + 15, peakZ + 30);
+            camera.lookAt(peakX, maxHeight, peakZ);
+
+            console.log(`✅ Camera positioned at (${camera.position.x}, ${camera.position.y}, ${camera.position.z})`);
 
             // Physics body (we don't actually use Cannon.js for terrain collision anymore)
             // Just keeping this for reference
