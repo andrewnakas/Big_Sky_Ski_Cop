@@ -304,7 +304,7 @@
                 size: 4096,  // Bigger terrain - 4km x 4km (still 2x original)
                 segments: 64, // Keep segments low for performance
                 heightScale: 5.0, // More vertical exaggeration for dramatic slopes
-                tileZoom: 15 // Higher zoom for more detailed satellite imagery
+                tileZoom: 17 // Very high zoom for detailed satellite imagery
             },
             physics: {
                 gravity: -32.2, // ft/s² (adjusted for feet)
@@ -825,10 +825,10 @@
             patrollerGroup.add(head);
             patrollerGroup.add(vest);
 
-            // Spawn ahead of player on their path
-            const spawnDistance = 40 + Math.random() * 40; // Closer spawn
-            const spawnX = player.position.x + (Math.random() - 0.5) * 30;
-            const spawnZ = player.position.z + playerVelocity.z * 2 - spawnDistance; // Predict path
+            // Spawn ABOVE and BEHIND player (uphill) so they ski down towards you
+            const spawnDistance = 60 + Math.random() * 60; // Distance uphill
+            const spawnX = player.position.x + (Math.random() - 0.5) * 50; // Spread out
+            const spawnZ = player.position.z + spawnDistance; // BEHIND player (uphill)
             const spawnY = getTerrainHeight(spawnX, spawnZ) + 2;
 
             patrollerGroup.position.set(spawnX, spawnY, spawnZ);
@@ -996,8 +996,19 @@
                         x: slopeVector.x / slopeSteepness,
                         z: slopeVector.z / slopeSteepness
                     };
-                    playerVelocity.x += slopeDir.x * gravityDownSlope * deltaTime;
-                    playerVelocity.z += slopeDir.z * gravityDownSlope * deltaTime;
+
+                    // DOWNHILL ALIGNMENT BONUS - extra speed when pointing skis downhill
+                    const playerDir = {
+                        x: -Math.sin(playerRotation),
+                        z: -Math.cos(playerRotation)
+                    };
+                    // Calculate how aligned player is with downhill direction (-1 to 1)
+                    const alignment = playerDir.x * slopeDir.x + playerDir.z * slopeDir.z;
+                    // Bonus acceleration when aligned with slope (max +20 ft/s²)
+                    const alignmentBonus = Math.max(0, alignment) * 20;
+
+                    playerVelocity.x += slopeDir.x * (gravityDownSlope + alignmentBonus) * deltaTime;
+                    playerVelocity.z += slopeDir.z * (gravityDownSlope + alignmentBonus) * deltaTime;
                 }
 
                 // Friction - varies based on snow conditions and technique
@@ -1118,6 +1129,11 @@
             camera.position.x = player.position.x + Math.sin(playerRotation) * camDistance;
             camera.position.y = player.position.y + camHeight;
             camera.position.z = player.position.z + Math.cos(playerRotation) * camDistance;
+
+            // CRITICAL: Prevent camera from going through terrain on steep slopes
+            const cameraTerrainHeight = getTerrainHeight(camera.position.x, camera.position.z);
+            camera.position.y = Math.max(camera.position.y, cameraTerrainHeight + 5);
+
             camera.lookAt(player.position);
 
             // Update stats
