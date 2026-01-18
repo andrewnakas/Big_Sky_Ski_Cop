@@ -267,6 +267,8 @@
             <p><strong>A/D:</strong> Turn left / right</p>
             <p><strong>Q/E:</strong> Edge control (carve)</p>
             <p><strong>Space:</strong> Jump</p>
+            <p><strong>X:</strong> Eject skis</p>
+            <p><strong>Click:</strong> Throw bomb</p>
             <p><strong>Mouse:</strong> Look around</p>
             <p style="margin-top: 10px; color: #ff6666;"><strong>CAUTION:</strong> All runs are closed! Ski Patrol is after you!</p>
         </div>
@@ -319,6 +321,7 @@
         let terrain, terrainBody;
         let patrollers = [];
         let vehicles = [];
+        let bombs = []; // Track active bombs
         let wantedLevel = 0;
         let evadedCount = 0;
         let totalDistance = 0;
@@ -333,6 +336,7 @@
         let edgeAngle = 0; // for carving
         let isAirborne = false;
         let isRagdoll = false;
+        let skisEjected = false; // Track if player ejected from skis
 
         // Initialize the game
         async function init() {
@@ -402,6 +406,7 @@
             document.addEventListener('keydown', (e) => keys[e.code] = true);
             document.addEventListener('keyup', (e) => keys[e.code] = false);
             document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('click', throwBomb);
             document.getElementById('restartBtn').addEventListener('click', restartGame);
 
             // Hide loading screen
@@ -472,39 +477,46 @@
 
             console.log('✅ Terrain material created (white snow)');
 
-            // Load high-resolution satellite imagery covering the whole terrain
-            // We'll load a 3x3 grid of tiles for complete coverage
+            // Load high-resolution satellite imagery with proper texture mapping
             const textureLoader = new THREE.TextureLoader();
             textureLoader.crossOrigin = 'anonymous';
 
-            // Calculate tile grid needed to cover terrain
-            const tilesToLoad = [];
-            for (let dx = -1; dx <= 1; dx++) {
-                for (let dy = -1; dy <= 1; dy++) {
-                    tilesToLoad.push({
-                        x: xtile + dx,
-                        y: ytile + dy
-                    });
-                }
-            }
+            console.log(`🛰️ Loading satellite imagery at zoom ${zoom}...`);
 
-            console.log(`🛰️ Loading ${tilesToLoad.length} high-res satellite tiles for full coverage...`);
+            // Try to load satellite texture - use lower zoom if high zoom fails
+            const tryLoadTexture = (attemptZoom) => {
+                const url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${attemptZoom}/${ytile}/${xtile}`;
+                console.log(`Attempting to load: ${url}`);
 
-            // Load center tile first for immediate display
-            textureLoader.load(
-                `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${ytile}/${xtile}`,
-                function (texture) {
-                    console.log('✅ Center satellite tile loaded!');
-                    texture.wrapS = THREE.RepeatWrapping;
-                    texture.wrapT = THREE.RepeatWrapping;
-                    material.map = texture;
-                    material.needsUpdate = true;
-                },
-                undefined,
-                function (err) {
-                    console.warn('⚠️ Could not load satellite imagery, using white snow:', err);
-                }
-            );
+                textureLoader.load(
+                    url,
+                    function (texture) {
+                        console.log(`✅ Satellite tile loaded at zoom ${attemptZoom}!`);
+                        texture.wrapS = THREE.ClampToEdgeWrapping;
+                        texture.wrapT = THREE.ClampToEdgeWrapping;
+                        texture.minFilter = THREE.LinearFilter;
+                        texture.magFilter = THREE.LinearFilter;
+                        material.map = texture;
+                        material.needsUpdate = true;
+                        // Remove the green color once texture loads
+                        material.color.setHex(0xffffff);
+                    },
+                    undefined,
+                    function (err) {
+                        console.warn(`⚠️ Could not load satellite imagery at zoom ${attemptZoom}`);
+                        // Try lower zoom level if high zoom fails
+                        if (attemptZoom > 15) {
+                            console.log(`Trying lower zoom level: ${attemptZoom - 2}`);
+                            tryLoadTexture(attemptZoom - 2);
+                        } else {
+                            console.warn('Using white snow texture');
+                        }
+                    }
+                );
+            };
+
+            // Start loading at requested zoom level
+            tryLoadTexture(zoom);
 
             terrain = new THREE.Mesh(geometry, material);
             scene.add(terrain);
@@ -947,6 +959,17 @@
             const vest = new THREE.Mesh(vestGeometry, vestMaterial);
             vest.position.y = 0.7;
 
+            // GREEN MEDICAL CROSS on vest (vertical bar)
+            const crossVertGeometry = new THREE.BoxGeometry(0.08, 0.25, 0.02);
+            const crossMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 }); // Bright green
+            const crossVert = new THREE.Mesh(crossVertGeometry, crossMaterial);
+            crossVert.position.set(0, 0.8, 0.22);
+
+            // GREEN MEDICAL CROSS (horizontal bar)
+            const crossHorGeometry = new THREE.BoxGeometry(0.25, 0.08, 0.02);
+            const crossHor = new THREE.Mesh(crossHorGeometry, crossMaterial);
+            crossHor.position.set(0, 0.8, 0.22);
+
             // ARMS
             const armGeometry = new THREE.CylinderGeometry(0.12, 0.12, 0.9, 8);
             const armMaterial = new THREE.MeshStandardMaterial({ color: 0x003300 });
@@ -1010,6 +1033,8 @@
             patrollerGroup.add(helmet);
             patrollerGroup.add(torso);
             patrollerGroup.add(vest);
+            patrollerGroup.add(crossVert); // Green cross
+            patrollerGroup.add(crossHor); // Green cross
             patrollerGroup.add(leftArm);
             patrollerGroup.add(rightArm);
             patrollerGroup.add(leftLeg);
@@ -1310,6 +1335,12 @@
                 isAirborne = true;
             }
 
+            // Eject skis (X key)
+            if (keys['KeyX'] && !skisEjected) {
+                ejectSkis();
+                keys['KeyX'] = false; // Prevent repeat
+            }
+
             // Update position
             player.position.x += playerVelocity.x * deltaTime;
             player.position.y += playerVelocity.y * deltaTime;
@@ -1453,8 +1484,18 @@
                             }, 3000);
                             return;
                         } else if (patrolMomentum > playerMomentum * 0.8) {
-                            // Patrol TACKLES player successfully!
-                            arrestPlayer("Tackled by ski patrol!");
+                            // Patrol TACKLES player - eject skis!
+                            if (!skisEjected) {
+                                ejectSkis();
+                                showPatrolAlert("Skis ejected! Stop to be arrested!");
+                                playerVelocity.x *= 0.3;
+                                playerVelocity.z *= 0.3;
+                            } else {
+                                // Player already ejected - now can be arrested if slow enough
+                                if (playerSpeed < 5) {
+                                    arrestPlayer("Tackled by ski patrol!");
+                                }
+                            }
                             return;
                         } else {
                             // Equal collision - both get knocked around
@@ -1504,6 +1545,25 @@
                         shootTazer(patroller);
                     }
                 }
+
+                // PATROL COLLISION AVOIDANCE - prevent clustering
+                patrollers.forEach((otherPatroller, otherIndex) => {
+                    if (otherIndex === index || otherPatroller.crashed) return;
+
+                    const odx = patroller.mesh.position.x - otherPatroller.mesh.position.x;
+                    const odz = patroller.mesh.position.z - otherPatroller.mesh.position.z;
+                    const oDist = Math.sqrt(odx * odx + odz * odz);
+
+                    // If too close to another patrol, push away
+                    if (oDist < 8 && oDist > 0.1) {
+                        const avoidanceStrength = 10;
+                        const pushX = (odx / oDist) * avoidanceStrength;
+                        const pushZ = (odz / oDist) * avoidanceStrength;
+
+                        patroller.velocity.x += pushX * deltaTime;
+                        patroller.velocity.z += pushZ * deltaTime;
+                    }
+                });
 
                 // Update position
                 const terrainY = getTerrainHeight(
@@ -1619,11 +1679,83 @@
 
         // Arrest player (game over)
         function arrestPlayer(message) {
+            if (!skisEjected) {
+                // Can't be arrested while still on skis!
+                return;
+            }
+
             gameActive = false;
-            document.getElementById('arrestMessage').textContent = message;
+
+            // Show handcuff animation
+            const arrestMsg = message + " - HANDCUFFED!";
+            document.getElementById('arrestMessage').textContent = arrestMsg;
             document.getElementById('finalEvaded').textContent = evadedCount;
             document.getElementById('finalDistance').textContent = totalDistance.toFixed(0);
             document.getElementById('gameOver').style.display = 'block';
+
+            // Animate player being handcuffed (arms behind back)
+            player.children.forEach(child => {
+                if (child.geometry && child.geometry.type === 'CylinderGeometry') {
+                    // Rotate arms behind back
+                    child.rotation.x = Math.PI / 4;
+                }
+            });
+        }
+
+        // Eject from skis
+        function ejectSkis() {
+            if (skisEjected) return;
+
+            skisEjected = true;
+            showPatrolAlert("Skis ejected! You're vulnerable!");
+
+            // Find and remove ski meshes from player
+            const skisToRemove = [];
+            player.children.forEach((child, index) => {
+                // Remove skis, boots, and poles
+                if (child.position.y < -0.5 || // Skis and boots are low
+                    child.geometry.parameters?.radiusTop === 0.03) { // Poles are thin
+                    skisToRemove.push(child);
+                }
+            });
+
+            // Create flying ski objects
+            skisToRemove.forEach(ski => {
+                const flyingSki = ski.clone();
+                flyingSki.position.copy(player.position);
+                flyingSki.position.y += ski.position.y;
+                scene.add(flyingSki);
+
+                // Eject skis away from player
+                const ejectVel = {
+                    x: (Math.random() - 0.5) * 20,
+                    y: 10 + Math.random() * 10,
+                    z: (Math.random() - 0.5) * 20
+                };
+
+                // Animate falling ski
+                let skiY = flyingSki.position.y;
+                const skiInterval = setInterval(() => {
+                    ejectVel.y -= 2;
+                    flyingSki.position.x += ejectVel.x * 0.016;
+                    flyingSki.position.y += ejectVel.y * 0.016;
+                    flyingSki.position.z += ejectVel.z * 0.016;
+                    flyingSki.rotation.x += 0.1;
+                    flyingSki.rotation.z += 0.15;
+
+                    const terrainH = getTerrainHeight(flyingSki.position.x, flyingSki.position.z);
+                    if (flyingSki.position.y < terrainH) {
+                        flyingSki.position.y = terrainH;
+                        clearInterval(skiInterval);
+                        // Remove after a while
+                        setTimeout(() => scene.remove(flyingSki), 5000);
+                    }
+                }, 16);
+
+                player.remove(ski);
+            });
+
+            console.log('🎿 Skis ejected!');
         }
 
         // Mouse movement
@@ -1635,6 +1767,144 @@
         // Restart game
         function restartGame() {
             location.reload();
+        }
+
+        // Throw bomb
+        function throwBomb(event) {
+            if (!gameActive) return;
+            if (event.target.id === 'restartBtn') return; // Don't throw bombs when clicking restart
+
+            // Create bomb visual
+            const bombGeometry = new THREE.SphereGeometry(0.3, 16, 16);
+            const bombMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 }); // Black bomb
+            const bombMesh = new THREE.Mesh(bombGeometry, bombMaterial);
+
+            // Fuse (small orange cylinder)
+            const fuseGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.2, 6);
+            const fuseMaterial = new THREE.MeshStandardMaterial({ color: 0xff6600 });
+            const fuse = new THREE.Mesh(fuseGeometry, fuseMaterial);
+            fuse.position.y = 0.35;
+
+            const bombGroup = new THREE.Group();
+            bombGroup.add(bombMesh);
+            bombGroup.add(fuse);
+
+            // Start at player position
+            bombGroup.position.copy(player.position);
+            bombGroup.position.y += 2;
+            scene.add(bombGroup);
+
+            // Calculate throw direction (forward from player)
+            const throwPower = 40;
+            const velocity = {
+                x: -Math.sin(playerRotation) * throwPower,
+                y: 15, // Arc upward
+                z: -Math.cos(playerRotation) * throwPower
+            };
+
+            bombs.push({
+                mesh: bombGroup,
+                velocity: velocity,
+                lifetime: 3.0 // Explode after 3 seconds
+            });
+
+            // Increase wanted level for throwing bombs!
+            if (wantedLevel < 5) {
+                wantedLevel++;
+                updateWantedLevel();
+                showPatrolAlert("Throwing explosives! Wanted level increased!");
+            }
+
+            console.log('💣 Bomb thrown!');
+        }
+
+        // Update bombs
+        function updateBombs(deltaTime) {
+            bombs.forEach((bomb, index) => {
+                // Apply gravity
+                bomb.velocity.y += config.physics.gravity * deltaTime;
+
+                // Update position
+                bomb.mesh.position.x += bomb.velocity.x * deltaTime;
+                bomb.mesh.position.y += bomb.velocity.y * deltaTime;
+                bomb.mesh.position.z += bomb.velocity.z * deltaTime;
+
+                // Rotate bomb for effect
+                bomb.mesh.rotation.x += deltaTime * 5;
+                bomb.mesh.rotation.z += deltaTime * 3;
+
+                // Check terrain collision
+                const terrainHeight = getTerrainHeight(bomb.mesh.position.x, bomb.mesh.position.z);
+                if (bomb.mesh.position.y < terrainHeight) {
+                    // Explode on impact
+                    explodeBomb(bomb, index);
+                    return;
+                }
+
+                // Countdown timer
+                bomb.lifetime -= deltaTime;
+                if (bomb.lifetime <= 0) {
+                    // Explode after time runs out
+                    explodeBomb(bomb, index);
+                }
+            });
+        }
+
+        // Explode bomb
+        function explodeBomb(bomb, bombIndex) {
+            const explosionRadius = 15;
+
+            // Create explosion visual (expanding orange sphere)
+            const explosionGeometry = new THREE.SphereGeometry(1, 16, 16);
+            const explosionMaterial = new THREE.MeshBasicMaterial({
+                color: 0xff6600,
+                transparent: true,
+                opacity: 0.8
+            });
+            const explosion = new THREE.Mesh(explosionGeometry, explosionMaterial);
+            explosion.position.copy(bomb.mesh.position);
+            scene.add(explosion);
+
+            // Animate explosion
+            let explosionScale = 0;
+            const explosionInterval = setInterval(() => {
+                explosionScale += 1;
+                explosion.scale.set(explosionScale, explosionScale, explosionScale);
+                explosion.material.opacity -= 0.1;
+
+                if (explosion.material.opacity <= 0) {
+                    clearInterval(explosionInterval);
+                    scene.remove(explosion);
+                }
+            }, 30);
+
+            // Check for patrol hits
+            patrollers.forEach((patroller, patrolIndex) => {
+                if (patroller.crashed) return;
+
+                const dx = patroller.mesh.position.x - bomb.mesh.position.x;
+                const dz = patroller.mesh.position.z - bomb.mesh.position.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+
+                if (distance < explosionRadius) {
+                    // Patrol hit by explosion!
+                    patroller.crashed = true;
+                    patroller.mesh.rotation.x = Math.PI / 2;
+                    evadedCount++;
+                    document.getElementById('evaded').textContent = evadedCount;
+
+                    setTimeout(() => {
+                        scene.remove(patroller.mesh);
+                        patrollers.splice(patrolIndex, 1);
+                    }, 2000);
+                }
+            });
+
+            // Remove bomb
+            scene.remove(bomb.mesh);
+            bombs.splice(bombIndex, 1);
+
+            showPatrolAlert("BOOM! 💣");
         }
 
         // Main animation loop
@@ -1654,6 +1924,7 @@
                 updatePlayer(deltaTime);
                 updatePatrollers(deltaTime);
                 updateVehicles(deltaTime);
+                updateBombs(deltaTime);
             }
 
             // Render
