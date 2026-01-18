@@ -784,29 +784,104 @@
 
         // Create player (skier)
         function createPlayer() {
-            // Player visual (simple skier)
-            const bodyGeometry = new THREE.CylinderGeometry(0.5, 0.5, 2, 8);
-            const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x0066cc });
-            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            // HUMANOID PLAYER MODEL - realistic skiing body
 
-            const headGeometry = new THREE.SphereGeometry(0.4, 8, 8);
-            const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffdbac });
+            // HEAD - Sphere with helmet
+            const headGeometry = new THREE.SphereGeometry(0.35, 16, 16);
+            const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffdbac }); // Skin tone
             const head = new THREE.Mesh(headGeometry, headMaterial);
-            head.position.y = 1.4;
+            head.position.y = 1.5;
 
-            // Skis
-            const skiGeometry = new THREE.BoxGeometry(0.2, 0.1, 2.5);
-            const skiMaterial = new THREE.MeshStandardMaterial({ color: 0xff6600 });
+            // HELMET
+            const helmetGeometry = new THREE.SphereGeometry(0.38, 16, 16, 0, Math.PI * 2, 0, Math.PI * 0.6);
+            const helmetMaterial = new THREE.MeshStandardMaterial({ color: 0x0066cc }); // Blue helmet
+            const helmet = new THREE.Mesh(helmetGeometry, helmetMaterial);
+            helmet.position.y = 1.5;
+
+            // TORSO - Box geometry for realistic body
+            const torsoGeometry = new THREE.BoxGeometry(0.6, 0.9, 0.4);
+            const torsoMaterial = new THREE.MeshStandardMaterial({ color: 0x0066cc }); // Blue jacket
+            const torso = new THREE.Mesh(torsoGeometry, torsoMaterial);
+            torso.position.y = 0.6;
+            torso.rotation.x = 0.2; // Lean forward slightly for skiing stance
+
+            // ARMS - Cylinders positioned at shoulders
+            const armGeometry = new THREE.CylinderGeometry(0.12, 0.12, 0.9, 8);
+            const armMaterial = new THREE.MeshStandardMaterial({ color: 0x0066cc }); // Jacket sleeves
+
+            // Left arm
+            const leftArm = new THREE.Mesh(armGeometry, armMaterial);
+            leftArm.position.set(-0.4, 0.5, 0);
+            leftArm.rotation.z = 0.3; // Angled for skiing pole position
+
+            // Right arm
+            const rightArm = new THREE.Mesh(armGeometry, armMaterial);
+            rightArm.position.set(0.4, 0.5, 0);
+            rightArm.rotation.z = -0.3;
+
+            // LEGS - Cylinders positioned at hips
+            const legGeometry = new THREE.CylinderGeometry(0.15, 0.13, 1.0, 8);
+            const legMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 }); // Black ski pants
+
+            // Left leg
+            const leftLeg = new THREE.Mesh(legGeometry, legMaterial);
+            leftLeg.position.set(-0.2, -0.4, 0);
+            leftLeg.rotation.x = 0.1; // Slight bend for skiing stance
+
+            // Right leg
+            const rightLeg = new THREE.Mesh(legGeometry, legMaterial);
+            rightLeg.position.set(0.2, -0.4, 0);
+            rightLeg.rotation.x = 0.1;
+
+            // SKI BOOTS
+            const bootGeometry = new THREE.BoxGeometry(0.25, 0.3, 0.4);
+            const bootMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+
+            const leftBoot = new THREE.Mesh(bootGeometry, bootMaterial);
+            leftBoot.position.set(-0.2, -1.0, 0.05);
+
+            const rightBoot = new THREE.Mesh(bootGeometry, bootMaterial);
+            rightBoot.position.set(0.2, -1.0, 0.05);
+
+            // SKIS
+            const skiGeometry = new THREE.BoxGeometry(0.2, 0.08, 2.5);
+            const skiMaterial = new THREE.MeshStandardMaterial({ color: 0xff6600 }); // Orange skis
+
             const skiLeft = new THREE.Mesh(skiGeometry, skiMaterial);
-            const skiRight = new THREE.Mesh(skiGeometry, skiMaterial);
-            skiLeft.position.set(-0.3, -1.2, 0);
-            skiRight.position.set(0.3, -1.2, 0);
+            skiLeft.position.set(-0.2, -1.2, 0);
 
+            const skiRight = new THREE.Mesh(skiGeometry, skiMaterial);
+            skiRight.position.set(0.2, -1.2, 0);
+
+            // SKI POLES
+            const poleGeometry = new THREE.CylinderGeometry(0.03, 0.03, 1.2, 6);
+            const poleMaterial = new THREE.MeshStandardMaterial({ color: 0xaaaaaa }); // Silver poles
+
+            const leftPole = new THREE.Mesh(poleGeometry, poleMaterial);
+            leftPole.position.set(-0.5, 0.2, 0.3);
+            leftPole.rotation.x = -0.5;
+            leftPole.rotation.z = 0.3;
+
+            const rightPole = new THREE.Mesh(poleGeometry, poleMaterial);
+            rightPole.position.set(0.5, 0.2, 0.3);
+            rightPole.rotation.x = -0.5;
+            rightPole.rotation.z = -0.3;
+
+            // Assemble humanoid player
             player = new THREE.Group();
-            player.add(body);
             player.add(head);
+            player.add(helmet);
+            player.add(torso);
+            player.add(leftArm);
+            player.add(rightArm);
+            player.add(leftLeg);
+            player.add(rightLeg);
+            player.add(leftBoot);
+            player.add(rightBoot);
             player.add(skiLeft);
             player.add(skiRight);
+            player.add(leftPole);
+            player.add(rightPole);
             player.castShadow = true;
 
             // Find peak ONCE and store it
@@ -845,25 +920,106 @@
         function spawnPatroller() {
             const patrollerGroup = new THREE.Group();
 
-            // Patrol uniform (black and green)
-            const bodyGeometry = new THREE.CylinderGeometry(0.5, 0.5, 2, 8);
-            const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0x003300 }); // Dark green
-            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            // HUMANOID SKI PATROL MODEL
 
-            const headGeometry = new THREE.SphereGeometry(0.4, 8, 8);
-            const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffdbac });
+            // HEAD
+            const headGeometry = new THREE.SphereGeometry(0.35, 16, 16);
+            const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffdbac }); // Skin tone
             const head = new THREE.Mesh(headGeometry, headMaterial);
-            head.position.y = 1.4;
+            head.position.y = 1.5;
 
-            // Black vest
-            const vestGeometry = new THREE.CylinderGeometry(0.6, 0.6, 1, 8);
+            // HELMET (red for patrol)
+            const helmetGeometry = new THREE.SphereGeometry(0.38, 16, 16, 0, Math.PI * 2, 0, Math.PI * 0.6);
+            const helmetMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 }); // Red patrol helmet
+            const helmet = new THREE.Mesh(helmetGeometry, helmetMaterial);
+            helmet.position.y = 1.5;
+
+            // TORSO - Dark green patrol jacket
+            const torsoGeometry = new THREE.BoxGeometry(0.6, 0.9, 0.4);
+            const torsoMaterial = new THREE.MeshStandardMaterial({ color: 0x003300 }); // Dark green
+            const torso = new THREE.Mesh(torsoGeometry, torsoMaterial);
+            torso.position.y = 0.6;
+            torso.rotation.x = 0.2; // Lean forward for skiing
+
+            // BLACK PATROL VEST
+            const vestGeometry = new THREE.BoxGeometry(0.65, 0.7, 0.42);
             const vestMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 });
             const vest = new THREE.Mesh(vestGeometry, vestMaterial);
-            vest.position.y = 0.5;
+            vest.position.y = 0.7;
 
-            patrollerGroup.add(body);
+            // ARMS
+            const armGeometry = new THREE.CylinderGeometry(0.12, 0.12, 0.9, 8);
+            const armMaterial = new THREE.MeshStandardMaterial({ color: 0x003300 });
+
+            const leftArm = new THREE.Mesh(armGeometry, armMaterial);
+            leftArm.position.set(-0.4, 0.5, 0);
+            leftArm.rotation.z = 0.3;
+
+            const rightArm = new THREE.Mesh(armGeometry, armMaterial);
+            rightArm.position.set(0.4, 0.5, 0);
+            rightArm.rotation.z = -0.3;
+
+            // LEGS - Black patrol pants
+            const legGeometry = new THREE.CylinderGeometry(0.15, 0.13, 1.0, 8);
+            const legMaterial = new THREE.MeshStandardMaterial({ color: 0x111111 });
+
+            const leftLeg = new THREE.Mesh(legGeometry, legMaterial);
+            leftLeg.position.set(-0.2, -0.4, 0);
+            leftLeg.rotation.x = 0.1;
+
+            const rightLeg = new THREE.Mesh(legGeometry, legMaterial);
+            rightLeg.position.set(0.2, -0.4, 0);
+            rightLeg.rotation.x = 0.1;
+
+            // SKI BOOTS
+            const bootGeometry = new THREE.BoxGeometry(0.25, 0.3, 0.4);
+            const bootMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 });
+
+            const leftBoot = new THREE.Mesh(bootGeometry, bootMaterial);
+            leftBoot.position.set(-0.2, -1.0, 0.05);
+
+            const rightBoot = new THREE.Mesh(bootGeometry, bootMaterial);
+            rightBoot.position.set(0.2, -1.0, 0.05);
+
+            // SKIS
+            const skiGeometry = new THREE.BoxGeometry(0.2, 0.08, 2.5);
+            const skiMaterial = new THREE.MeshStandardMaterial({ color: 0xcccccc }); // Gray patrol skis
+
+            const skiLeft = new THREE.Mesh(skiGeometry, skiMaterial);
+            skiLeft.position.set(-0.2, -1.2, 0);
+
+            const skiRight = new THREE.Mesh(skiGeometry, skiMaterial);
+            skiRight.position.set(0.2, -1.2, 0);
+
+            // SKI POLES
+            const poleGeometry = new THREE.CylinderGeometry(0.03, 0.03, 1.2, 6);
+            const poleMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
+
+            const leftPole = new THREE.Mesh(poleGeometry, poleMaterial);
+            leftPole.position.set(-0.5, 0.2, 0.3);
+            leftPole.rotation.x = -0.5;
+            leftPole.rotation.z = 0.3;
+
+            const rightPole = new THREE.Mesh(poleGeometry, poleMaterial);
+            rightPole.position.set(0.5, 0.2, 0.3);
+            rightPole.rotation.x = -0.5;
+            rightPole.rotation.z = -0.3;
+
+            // Assemble humanoid patrol
             patrollerGroup.add(head);
+            patrollerGroup.add(helmet);
+            patrollerGroup.add(torso);
             patrollerGroup.add(vest);
+            patrollerGroup.add(leftArm);
+            patrollerGroup.add(rightArm);
+            patrollerGroup.add(leftLeg);
+            patrollerGroup.add(rightLeg);
+            patrollerGroup.add(leftBoot);
+            patrollerGroup.add(rightBoot);
+            patrollerGroup.add(skiLeft);
+            patrollerGroup.add(skiRight);
+            patrollerGroup.add(leftPole);
+            patrollerGroup.add(rightPole);
 
             // Spawn ABOVE and BEHIND player (uphill) so they ski down towards you
             const spawnDistance = 60 + Math.random() * 60; // Distance uphill
