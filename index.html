@@ -719,6 +719,46 @@
             }
 
             console.log('✅ Added Lone Peak Tram station and CLOSED run signs');
+
+            // Add Liberty Bowl snow fences (visible on satellite imagery at the top)
+            // These are the safety fences along the ridge lines
+            const fencePositions = [
+                // Ridge line running east-west from peak
+                { startX: peakX - 80, startZ: peakZ - 20, endX: peakX + 80, endZ: peakZ - 20 },
+                { startX: peakX - 80, startZ: peakZ - 15, endX: peakX + 80, endZ: peakZ - 15 },
+                // North ridge
+                { startX: peakX - 60, startZ: peakZ + 10, endX: peakX - 40, endZ: peakZ + 80 },
+                { startX: peakX - 55, startZ: peakZ + 10, endX: peakX - 35, endZ: peakZ + 80 },
+                // South ridge
+                { startX: peakX + 40, startZ: peakZ + 10, endX: peakX + 60, endZ: peakZ + 80 },
+                { startX: peakX + 45, startZ: peakZ + 10, endX: peakX + 65, endZ: peakZ + 80 }
+            ];
+
+            fencePositions.forEach(fence => {
+                const length = Math.sqrt(
+                    Math.pow(fence.endX - fence.startX, 2) +
+                    Math.pow(fence.endZ - fence.startZ, 2)
+                );
+                const angle = Math.atan2(fence.endZ - fence.startZ, fence.endX - fence.startX);
+
+                const fenceGeometry = new THREE.BoxGeometry(length, 3, 0.2);
+                const fenceMaterial = new THREE.MeshStandardMaterial({
+                    color: 0xff6600, // Orange safety fence
+                    transparent: true,
+                    opacity: 0.7
+                });
+                const fenceMesh = new THREE.Mesh(fenceGeometry, fenceMaterial);
+
+                const midX = (fence.startX + fence.endX) / 2;
+                const midZ = (fence.startZ + fence.endZ) / 2;
+                const fenceY = getTerrainHeight(midX, midZ);
+
+                fenceMesh.position.set(midX, fenceY + 1.5, midZ);
+                fenceMesh.rotation.y = angle;
+                scene.add(fenceMesh);
+            });
+
+            console.log('✅ Added Liberty Bowl snow fences');
         }
 
         // Get terrain height at position
@@ -987,8 +1027,8 @@
                 const slopeSteepness = Math.min(Math.sqrt(slopeVector.x ** 2 + slopeVector.z ** 2), 1.0);
 
                 // Gravity component down slope - accelerates you downhill
-                // Steeper slopes = faster acceleration
-                const gravityDownSlope = 25 * slopeSteepness;
+                // INCREASED for faster, more thrilling skiing
+                const gravityDownSlope = 35 * slopeSteepness;
 
                 // Apply gravity in slope direction
                 if (slopeSteepness > 0.02) {
@@ -1004,15 +1044,15 @@
                     };
                     // Calculate how aligned player is with downhill direction (-1 to 1)
                     const alignment = playerDir.x * slopeDir.x + playerDir.z * slopeDir.z;
-                    // Bonus acceleration when aligned with slope (max +20 ft/s²)
-                    const alignmentBonus = Math.max(0, alignment) * 20;
+                    // INCREASED bonus for more responsive downhill sliding (max +30 ft/s²)
+                    const alignmentBonus = Math.max(0, alignment) * 30;
 
                     playerVelocity.x += slopeDir.x * (gravityDownSlope + alignmentBonus) * deltaTime;
                     playerVelocity.z += slopeDir.z * (gravityDownSlope + alignmentBonus) * deltaTime;
                 }
 
                 // Friction - varies based on snow conditions and technique
-                let baseFriction = 0.985; // Very low friction (fast snow)
+                let baseFriction = 0.990; // ULTRA low friction for faster sliding on fresh snow
 
                 // Braking (S key) - pizzaing/snowplow
                 if (keys['KeyS']) {
@@ -1031,13 +1071,13 @@
                 // Pushing/tucking (W key)
                 if (keys['KeyW']) {
                     const currentSpeed = Math.sqrt(playerVelocity.x ** 2 + playerVelocity.z ** 2);
-                    if (currentSpeed < 100) { // Max tuck speed
+                    if (currentSpeed < 150) { // INCREASED max tuck speed for faster sliding
                         const pushDir = {
                             x: -Math.sin(playerRotation),
                             z: -Math.cos(playerRotation)
                         };
-                        playerVelocity.x += pushDir.x * 10 * deltaTime;
-                        playerVelocity.z += pushDir.z * 10 * deltaTime;
+                        playerVelocity.x += pushDir.x * 15 * deltaTime; // More push force
+                        playerVelocity.z += pushDir.z * 15 * deltaTime;
                     }
                 }
 
@@ -1192,17 +1232,89 @@
                 const dz = player.position.z - patroller.mesh.position.z;
                 const distance = Math.sqrt(dx * dx + dz * dz);
 
-                // Update AI behavior based on wanted level and state
-                if (distance < 8) {
-                    // Close enough to arrest
-                    arrestPlayer("Tackled by ski patrol!");
-                    return;
-                }
-
                 // Get player speed to match it
                 const playerSpeed = Math.sqrt(
                     playerVelocity.x ** 2 + playerVelocity.z ** 2
                 );
+
+                const patrolSpeed = Math.sqrt(
+                    patroller.velocity.x ** 2 + patroller.velocity.z ** 2
+                );
+
+                // HUMANOID COLLISION PHYSICS - based on relative velocity and momentum
+                if (distance < 5) {
+                    // Calculate relative velocity
+                    const relVelX = playerVelocity.x - patroller.velocity.x;
+                    const relVelZ = playerVelocity.z - patroller.velocity.z;
+                    const relativeSpeed = Math.sqrt(relVelX ** 2 + relVelZ ** 2);
+
+                    // Calculate if player is moving toward patrol
+                    const toPatrolX = patroller.mesh.position.x - player.position.x;
+                    const toPatrolZ = patroller.mesh.position.z - player.position.z;
+                    const approaching = (relVelX * toPatrolX + relVelZ * toPatrolZ) > 0;
+
+                    if (approaching && relativeSpeed > 5) {
+                        // COLLISION! Determine who wins based on speed and momentum
+                        const playerMomentum = playerSpeed;
+                        const patrolMomentum = patrolSpeed;
+
+                        // If player is AIRBORNE during collision, they can jump over/evade
+                        if (isAirborne && playerVelocity.y > 5) {
+                            // Player successfully jumped over patrol!
+                            showPatrolAlert("Jumped over patrol!");
+                            patroller.crashed = true;
+                            patroller.mesh.rotation.x = Math.PI / 2;
+                            evadedCount++;
+                            document.getElementById('evaded').textContent = evadedCount;
+                            setTimeout(() => {
+                                scene.remove(patroller.mesh);
+                                patrollers.splice(index, 1);
+                            }, 3000);
+                            return;
+                        }
+
+                        if (playerMomentum > patrolMomentum * 1.3) {
+                            // Player PUSHES patrol and knocks them over!
+                            patroller.crashed = true;
+                            patroller.mesh.rotation.x = Math.PI / 2; // Fall over
+
+                            // Transfer some momentum to patrol (push them away)
+                            const pushDir = { x: toPatrolX / distance, z: toPatrolZ / distance };
+                            patroller.velocity.x = pushDir.x * playerSpeed * 0.5;
+                            patroller.velocity.z = pushDir.z * playerSpeed * 0.5;
+
+                            evadedCount++;
+                            document.getElementById('evaded').textContent = evadedCount;
+                            showPatrolAlert("Patrol knocked down!");
+
+                            // Player loses some speed from collision
+                            playerVelocity.x *= 0.8;
+                            playerVelocity.z *= 0.8;
+
+                            setTimeout(() => {
+                                scene.remove(patroller.mesh);
+                                patrollers.splice(index, 1);
+                            }, 3000);
+                            return;
+                        } else if (patrolMomentum > playerMomentum * 0.8) {
+                            // Patrol TACKLES player successfully!
+                            arrestPlayer("Tackled by ski patrol!");
+                            return;
+                        } else {
+                            // Equal collision - both get knocked around
+                            // Player bounces off
+                            const bounceDir = { x: -toPatrolX / distance, z: -toPatrolZ / distance };
+                            playerVelocity.x = bounceDir.x * playerSpeed * 0.6;
+                            playerVelocity.z = bounceDir.z * playerSpeed * 0.6;
+
+                            // Patrol bounces back
+                            patroller.velocity.x *= -0.6;
+                            patroller.velocity.z *= -0.6;
+
+                            showPatrolAlert("Collision!");
+                        }
+                    }
+                }
 
                 if (wantedLevel <= 2) {
                     // Ski in front and try to block - but faster
@@ -1249,28 +1361,6 @@
 
                 // Face movement direction
                 patroller.mesh.rotation.y = Math.atan2(patroller.velocity.x, patroller.velocity.z);
-
-                // Check collision with player (player can make them crash IF much faster)
-                if (distance < 4 && distance > 1.5) {
-                    const relativeSpeed = playerSpeed - Math.sqrt(
-                        patroller.velocity.x ** 2 + patroller.velocity.z ** 2
-                    );
-
-                    // Only crash patrol if player is going much faster (sideswiped them)
-                    if (relativeSpeed > 15) {
-                        patroller.crashed = true;
-                        patroller.mesh.rotation.x = Math.PI / 2; // Fall over
-                        evadedCount++;
-                        document.getElementById('evaded').textContent = evadedCount;
-                        showPatrolAlert("Patrol crashed!");
-
-                        // Remove after a while
-                        setTimeout(() => {
-                            scene.remove(patroller.mesh);
-                            patrollers.splice(index, 1);
-                        }, 3000);
-                    }
-                }
 
                 // Spawn new patrollers more frequently
                 if (patrollers.length < wantedLevel * 3 && Math.random() < 0.01) {
