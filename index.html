@@ -322,6 +322,7 @@
         let patrollers = [];
         let vehicles = [];
         let bombs = []; // Track active bombs
+        let snowParticles = []; // Snow spray particles
         let wantedLevel = 0;
         let evadedCount = 0;
         let totalDistance = 0;
@@ -1486,6 +1487,15 @@
             ) * deltaTime;
             totalDistance += distanceMoved;
 
+            // SNOW SPRAY PARTICLES - create snow spray when skiing fast on ground
+            if (groundContact && !skisEjected && speed > 10) {
+                // Generate particles based on speed
+                const particleCount = Math.floor(speed / 15); // More particles at higher speeds
+                for (let i = 0; i < particleCount; i++) {
+                    createSnowParticle(player.position, playerVelocity, edgeAngle);
+                }
+            }
+
             // Increase wanted level based on distance and evaded
             if (totalDistance > 500 && wantedLevel < 2) {
                 wantedLevel = 2;
@@ -1947,6 +1957,65 @@
             console.log('💣 Bomb thrown!');
         }
 
+        // Create snow particle
+        function createSnowParticle(position, velocity, edgeAngle) {
+            // Create small white particle
+            const particleGeometry = new THREE.SphereGeometry(0.15, 4, 4);
+            const particleMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.8
+            });
+            const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+
+            // Position behind player (where skis kick up snow)
+            const behindOffset = Math.random() * 2 - 1;
+            particle.position.set(
+                position.x + behindOffset,
+                position.y - 0.5,
+                position.z + behindOffset
+            );
+
+            scene.add(particle);
+
+            // Particle physics - spray outward and upward
+            const spreadAngle = edgeAngle * 5 + (Math.random() - 0.5) * 2;
+            const particleVel = {
+                x: -velocity.x * 0.3 + Math.sin(spreadAngle) * 5,
+                y: 3 + Math.random() * 5, // Spray upward
+                z: -velocity.z * 0.3 + Math.cos(spreadAngle) * 5
+            };
+
+            snowParticles.push({
+                mesh: particle,
+                velocity: particleVel,
+                lifetime: 0.5 + Math.random() * 0.5 // Short lifetime
+            });
+        }
+
+        // Update snow particles
+        function updateSnowParticles(deltaTime) {
+            snowParticles.forEach((particle, index) => {
+                // Apply gravity
+                particle.velocity.y -= 15 * deltaTime;
+
+                // Update position
+                particle.mesh.position.x += particle.velocity.x * deltaTime;
+                particle.mesh.position.y += particle.velocity.y * deltaTime;
+                particle.mesh.position.z += particle.velocity.z * deltaTime;
+
+                // Fade out over lifetime
+                particle.lifetime -= deltaTime;
+                particle.mesh.material.opacity = particle.lifetime / 1.0;
+
+                // Remove dead particles
+                if (particle.lifetime <= 0 || particle.mesh.position.y < getTerrainHeight(particle.mesh.position.x, particle.mesh.position.z)) {
+                    scene.remove(particle.mesh);
+                    snowParticles.splice(index, 1);
+                }
+            });
+        }
+
         // Update bombs
         function updateBombs(deltaTime) {
             bombs.forEach((bomb, index) => {
@@ -1993,6 +2062,51 @@
             const explosion = new THREE.Mesh(explosionGeometry, explosionMaterial);
             explosion.position.copy(bomb.mesh.position);
             scene.add(explosion);
+
+            // Create explosion debris particles
+            const debrisCount = 20;
+            for (let i = 0; i < debrisCount; i++) {
+                const debrisGeometry = new THREE.SphereGeometry(0.2 + Math.random() * 0.3, 4, 4);
+                const debrisMaterial = new THREE.MeshBasicMaterial({
+                    color: Math.random() > 0.5 ? 0xff6600 : 0x333333,
+                    transparent: true,
+                    opacity: 1.0
+                });
+                const debris = new THREE.Mesh(debrisGeometry, debrisMaterial);
+                debris.position.copy(bomb.mesh.position);
+                scene.add(debris);
+
+                // Random explosion direction
+                const angle = Math.random() * Math.PI * 2;
+                const elevation = (Math.random() - 0.5) * Math.PI * 0.5;
+                const speed = 20 + Math.random() * 30;
+
+                const debrisVel = {
+                    x: Math.cos(angle) * Math.cos(elevation) * speed,
+                    y: Math.sin(elevation) * speed + 15,
+                    z: Math.sin(angle) * Math.cos(elevation) * speed
+                };
+
+                // Animate debris
+                let debrisLifetime = 1.0;
+                const debrisInterval = setInterval(() => {
+                    debrisVel.y -= 30 * 0.016; // Gravity
+                    debris.position.x += debrisVel.x * 0.016;
+                    debris.position.y += debrisVel.y * 0.016;
+                    debris.position.z += debrisVel.z * 0.016;
+
+                    debris.rotation.x += 0.2;
+                    debris.rotation.z += 0.15;
+
+                    debrisLifetime -= 0.016;
+                    debris.material.opacity = Math.max(0, debrisLifetime);
+
+                    if (debrisLifetime <= 0) {
+                        clearInterval(debrisInterval);
+                        scene.remove(debris);
+                    }
+                }, 16);
+            }
 
             // Animate explosion
             let explosionScale = 0;
@@ -2075,6 +2189,7 @@
                 updatePatrollers(deltaTime);
                 updateVehicles(deltaTime);
                 updateBombs(deltaTime);
+                updateSnowParticles(deltaTime);
             }
 
             // Render
