@@ -935,15 +935,18 @@
                 }
             }
 
-            // Use stored peak location
-            player.position.set(peakLocation.x, peakLocation.height + 1, peakLocation.z);
+            // Use stored peak location - spawn at tram station
+            // Tram is at peakX + 25, so spawn player right at tram entrance
+            const tramX = peakLocation.x + 25;
+            const tramZ = peakLocation.z;
+            player.position.set(tramX, peakLocation.height + 1, tramZ);
             scene.add(player);
 
-            console.log(`✅ Player spawned at Lone Peak summit, height: ${peakLocation.height.toFixed(1)} ft at (${peakLocation.x.toFixed(1)}, ${peakLocation.z.toFixed(1)})`);
+            console.log(`✅ Player spawned at Lone Peak Tram station, height: ${peakLocation.height.toFixed(1)} ft at (${tramX.toFixed(1)}, ${tramZ.toFixed(1)})`);
 
-            // Position camera behind and above player
-            camera.position.set(peakLocation.x, peakLocation.height + 50, peakLocation.z + 80);
-            camera.lookAt(new THREE.Vector3(peakLocation.x, peakLocation.height, peakLocation.z));
+            // Position camera behind and above player at tram
+            camera.position.set(tramX, peakLocation.height + 50, tramZ + 80);
+            camera.lookAt(new THREE.Vector3(tramX, peakLocation.height, tramZ));
 
             console.log(`✅ Camera positioned`);
 
