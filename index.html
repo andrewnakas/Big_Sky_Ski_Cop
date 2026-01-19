@@ -306,7 +306,7 @@
                 size: 4096,  // Bigger terrain - 4km x 4km (still 2x original)
                 segments: 64, // Keep segments low for performance
                 heightScale: 5.0, // More vertical exaggeration for dramatic slopes
-                tileZoom: 19 // MAXIMUM zoom for ultra high-res satellite imagery
+                tileZoom: 16 // Good balance of detail and availability
             },
             physics: {
                 gravity: -32.2, // ft/s² (adjusted for feet)
@@ -478,46 +478,68 @@
 
             console.log('✅ Terrain material created (white snow)');
 
-            // Load high-resolution satellite imagery with proper texture mapping
-            const textureLoader = new THREE.TextureLoader();
-            textureLoader.crossOrigin = 'anonymous';
-
+            // Load high-resolution satellite imagery - 3x3 grid of tiles
             console.log(`🛰️ Loading satellite imagery at zoom ${zoom}...`);
+            console.log(`   Center tile: ${xtile}, ${ytile}`);
 
-            // Try to load satellite texture - use lower zoom if high zoom fails
-            const tryLoadTexture = (attemptZoom) => {
-                const url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${attemptZoom}/${ytile}/${xtile}`;
-                console.log(`Attempting to load: ${url}`);
+            // Create canvas to composite tiles
+            const canvas = document.createElement('canvas');
+            canvas.width = 768; // 3x256 (tile size)
+            canvas.height = 768;
+            const ctx = canvas.getContext('2d');
 
-                textureLoader.load(
-                    url,
-                    function (texture) {
-                        console.log(`✅ Satellite tile loaded at zoom ${attemptZoom}!`);
-                        texture.wrapS = THREE.ClampToEdgeWrapping;
-                        texture.wrapT = THREE.ClampToEdgeWrapping;
-                        texture.minFilter = THREE.LinearFilter;
-                        texture.magFilter = THREE.LinearFilter;
-                        material.map = texture;
-                        material.needsUpdate = true;
-                        // Remove the green color once texture loads
-                        material.color.setHex(0xffffff);
-                    },
-                    undefined,
-                    function (err) {
-                        console.warn(`⚠️ Could not load satellite imagery at zoom ${attemptZoom}`);
-                        // Try lower zoom level if high zoom fails
-                        if (attemptZoom > 15) {
-                            console.log(`Trying lower zoom level: ${attemptZoom - 2}`);
-                            tryLoadTexture(attemptZoom - 2);
-                        } else {
-                            console.warn('Using white snow texture');
+            let tilesLoaded = 0;
+            const totalTiles = 9;
+
+            // Load 3x3 grid of tiles
+            for (let dx = -1; dx <= 1; dx++) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    const tx = xtile + dx;
+                    const ty = ytile + dy;
+                    const url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${ty}/${tx}`;
+
+                    const img = new Image();
+                    img.crossOrigin = 'anonymous';
+
+                    img.onload = function() {
+                        // Draw tile onto canvas at correct position
+                        const canvasX = (dx + 1) * 256;
+                        const canvasY = (dy + 1) * 256;
+                        ctx.drawImage(img, canvasX, canvasY);
+                        tilesLoaded++;
+
+                        console.log(`✅ Loaded tile ${tilesLoaded}/${totalTiles}`);
+
+                        // When all tiles loaded, create texture
+                        if (tilesLoaded === totalTiles) {
+                            const texture = new THREE.CanvasTexture(canvas);
+                            texture.wrapS = THREE.ClampToEdgeWrapping;
+                            texture.wrapT = THREE.ClampToEdgeWrapping;
+                            texture.minFilter = THREE.LinearFilter;
+                            texture.magFilter = THREE.LinearFilter;
+                            material.map = texture;
+                            material.needsUpdate = true;
+                            console.log('🎉 All satellite tiles loaded and composited!');
                         }
-                    }
-                );
-            };
+                    };
 
-            // Start loading at requested zoom level
-            tryLoadTexture(zoom);
+                    img.onerror = function() {
+                        console.warn(`⚠️ Failed to load tile ${tx},${ty}`);
+                        tilesLoaded++;
+                        // Still proceed if some tiles fail
+                        if (tilesLoaded === totalTiles) {
+                            const texture = new THREE.CanvasTexture(canvas);
+                            texture.wrapS = THREE.ClampToEdgeWrapping;
+                            texture.wrapT = THREE.ClampToEdgeWrapping;
+                            material.map = texture;
+                            material.needsUpdate = true;
+                            console.log('⚠️ Satellite tiles loaded with some failures');
+                        }
+                    };
+
+                    img.src = url;
+                }
+            }
 
             terrain = new THREE.Mesh(geometry, material);
             scene.add(terrain);
@@ -1048,7 +1070,8 @@
             patrollerGroup.add(rightPole);
 
             // Spawn ABOVE and BEHIND player (uphill) so they ski down towards you
-            const spawnDistance = 60 + Math.random() * 60; // Distance uphill
+            // CLOSER SPAWNS for more pressure
+            const spawnDistance = 40 + Math.random() * 40; // Distance uphill - REDUCED
             const spawnX = player.position.x + (Math.random() - 0.5) * 50; // Spread out
             const spawnZ = player.position.z + spawnDistance; // BEHIND player (uphill)
             const spawnY = getTerrainHeight(spawnX, spawnZ) + 2;
@@ -1636,7 +1659,7 @@
                 }
 
                 if (wantedLevel <= 2) {
-                    // Ski in front and try to block - but faster
+                    // Ski in front and try to block - MUCH FASTER NOW
                     patroller.state = 'blocking';
                     const targetX = player.position.x + (Math.random() - 0.5) * 20;
                     const targetZ = player.position.z - 50;
@@ -1646,24 +1669,24 @@
                     const dist = Math.sqrt(dirX * dirX + dirZ * dirZ);
 
                     if (dist > 1) {
-                        // Match player speed + 20% to catch up
-                        const speed = Math.max(40, playerSpeed * 1.2);
+                        // INCREASED: Match player speed + 50% to actually catch up
+                        const speed = Math.max(60, playerSpeed * 1.5);
                         patroller.velocity.x = (dirX / dist) * speed;
                         patroller.velocity.z = (dirZ / dist) * speed;
                     }
                 } else {
-                    // Chase player directly - even faster
+                    // Chase player directly - VERY AGGRESSIVE
                     patroller.state = 'chasing';
                     const dirX = dx / distance;
                     const dirZ = dz / distance;
 
-                    // Match player speed + 30% to catch up
-                    const speed = Math.max(50, playerSpeed * 1.3);
+                    // INCREASED: Match player speed + 70% to be threatening
+                    const speed = Math.max(80, playerSpeed * 1.7);
                     patroller.velocity.x = dirX * speed;
                     patroller.velocity.z = dirZ * speed;
 
-                    // Shoot tazers at level 3+
-                    if (wantedLevel >= 3 && distance < 50 && Math.random() < 0.01) {
+                    // Shoot tazers at level 3+ - MORE FREQUENTLY
+                    if (wantedLevel >= 3 && distance < 70 && Math.random() < 0.03) {
                         shootTazer(patroller);
                     }
                 }
@@ -1913,6 +1936,30 @@
             if (!gameActive) return;
             if (event.target.id === 'restartBtn') return; // Don't throw bombs when clicking restart
 
+            // Raycast from camera to find where click hits terrain
+            const mouse = new THREE.Vector2();
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, camera);
+
+            const intersects = raycaster.intersectObject(terrain);
+
+            let targetPos;
+            if (intersects.length > 0) {
+                // Found terrain intersection - aim for that point
+                targetPos = intersects[0].point;
+                console.log(`🎯 Bomb target: ${targetPos.x.toFixed(1)}, ${targetPos.z.toFixed(1)}`);
+            } else {
+                // No terrain hit - throw forward
+                targetPos = new THREE.Vector3(
+                    player.position.x - Math.sin(playerRotation) * 50,
+                    player.position.y,
+                    player.position.z - Math.cos(playerRotation) * 50
+                );
+            }
+
             // Create bomb visual
             const bombGeometry = new THREE.SphereGeometry(0.3, 16, 16);
             const bombMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 }); // Black bomb
@@ -1933,18 +1980,25 @@
             bombGroup.position.y += 2;
             scene.add(bombGroup);
 
-            // Calculate throw direction (forward from player)
-            const throwPower = 40;
+            // Calculate throw direction toward target
+            const dx = targetPos.x - player.position.x;
+            const dz = targetPos.z - player.position.z;
+            const horizontalDist = Math.sqrt(dx * dx + dz * dz);
+
+            // Calculate velocity needed to reach target
+            const throwPower = Math.min(60, horizontalDist * 0.8); // Scale power with distance
+            const arcHeight = 20 + horizontalDist * 0.2; // Higher arc for farther throws
+
             const velocity = {
-                x: -Math.sin(playerRotation) * throwPower,
-                y: 15, // Arc upward
-                z: -Math.cos(playerRotation) * throwPower
+                x: (dx / horizontalDist) * throwPower,
+                y: arcHeight,
+                z: (dz / horizontalDist) * throwPower
             };
 
             bombs.push({
                 mesh: bombGroup,
                 velocity: velocity,
-                lifetime: 3.0 // Explode after 3 seconds
+                lifetime: 4.0 // Longer fuse for farther throws
             });
 
             // Increase wanted level for throwing bombs!
@@ -1954,7 +2008,7 @@
                 showPatrolAlert("Throwing explosives! Wanted level increased!");
             }
 
-            console.log('💣 Bomb thrown!');
+            console.log('💣 Bomb thrown toward target!');
         }
 
         // Create snow particle
