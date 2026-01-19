@@ -303,11 +303,12 @@
                 baseElevation: 7500   // feet
             },
             terrain: {
-                size: 4096,  // Bigger terrain - 4km x 4km (still 2x original)
-                segments: 64, // Keep segments low for performance
+                size: 8192,  // Much bigger - 8km x 8km for full 360° mountain view
+                segments: 128, // More segments for better detail on larger terrain
                 heightScale: 5.0, // More vertical exaggeration for dramatic slopes
                 elevationZoom: 15, // Terrarium tiles max zoom (real elevation data)
-                satelliteZoom: 19 // MAXIMUM zoom for ultra high-res satellite imagery
+                satelliteZoom: 17, // Reduced from 19 for better tile availability on larger area
+                tileGrid: 3 // Load 3x3 grid of tiles centered on peak
             },
             physics: {
                 gravity: -32.2, // ft/s² (adjusted for feet)
@@ -512,51 +513,13 @@
 
             console.log('✅ Terrain material created (white snow)');
 
-            // Load high-resolution satellite imagery with proper texture mapping
-            const textureLoader = new THREE.TextureLoader();
-            textureLoader.crossOrigin = 'anonymous';
+            // Load high-resolution satellite imagery (3x3 grid to match terrain)
+            console.log(`🛰️ Loading ${config.terrain.tileGrid}x${config.terrain.tileGrid} grid of satellite tiles at zoom ${satelliteZoom}...`);
 
-            console.log(`🛰️ Loading satellite imagery at zoom ${satelliteZoom}...`);
-
-            // Try to load satellite texture - use lower zoom if high zoom fails
-            const tryLoadTexture = (attemptZoom) => {
-                // Recalculate tile coordinates for the attempt zoom level
-                const n = Math.pow(2, attemptZoom);
-                const xt = Math.floor((lon + 180) / 360 * n);
-                const yt = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n);
-
-                const url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${attemptZoom}/${yt}/${xt}`;
-                console.log(`Attempting to load: ${url}`);
-
-                textureLoader.load(
-                    url,
-                    function (texture) {
-                        console.log(`✅ Satellite tile loaded at zoom ${attemptZoom}!`);
-                        texture.wrapS = THREE.ClampToEdgeWrapping;
-                        texture.wrapT = THREE.ClampToEdgeWrapping;
-                        texture.minFilter = THREE.LinearFilter;
-                        texture.magFilter = THREE.LinearFilter;
-                        material.map = texture;
-                        material.needsUpdate = true;
-                        // Remove the green color once texture loads
-                        material.color.setHex(0xffffff);
-                    },
-                    undefined,
-                    function (err) {
-                        console.warn(`⚠️ Could not load satellite imagery at zoom ${attemptZoom}`);
-                        // Try lower zoom level if high zoom fails
-                        if (attemptZoom > 15) {
-                            console.log(`Trying lower zoom level: ${attemptZoom - 2}`);
-                            tryLoadTexture(attemptZoom - 2);
-                        } else {
-                            console.warn('Using white snow texture');
-                        }
-                    }
-                );
-            };
-
-            // Start loading at requested zoom level
-            tryLoadTexture(satelliteZoom);
+            loadSatelliteGrid(xtileSat, ytileSat, satelliteZoom, material).catch(err => {
+                console.error('Failed to load satellite grid:', err);
+                console.warn('Using white snow texture as fallback');
+            });
 
             terrain = new THREE.Mesh(geometry, material);
             scene.add(terrain);
@@ -572,84 +535,185 @@
             addTreesAndObstacles();
         }
 
-        // Load height data from Terrarium RGB tiles
-        async function loadHeightData(xtile, ytile, zoom) {
+        // Load height data from Terrarium RGB tiles (3x3 grid for full mountain)
+        async function loadHeightData(centerXtile, centerYtile, zoom) {
             const segments = config.terrain.segments;
             const heightData = new Array(segments * segments).fill(0);
+            const gridSize = config.terrain.tileGrid; // 3x3 grid
 
-            console.log(`🏔️ Loading real Terrarium elevation data for Big Sky (tile ${xtile},${ytile} @ zoom ${zoom})...`);
+            console.log(`🏔️ Loading ${gridSize}x${gridSize} grid of Terrarium tiles centered on (${centerXtile},${centerYtile}) @ zoom ${zoom}...`);
 
+            // Calculate tile grid bounds (centered on peak)
+            const offset = Math.floor(gridSize / 2);
+            const tilePromises = [];
+
+            // Load all tiles in the grid
+            for (let ty = 0; ty < gridSize; ty++) {
+                for (let tx = 0; tx < gridSize; tx++) {
+                    const xtile = centerXtile + tx - offset;
+                    const ytile = centerYtile + ty - offset;
+                    tilePromises.push(loadSingleTerrainTile(xtile, ytile, zoom));
+                }
+            }
+
+            // Wait for all tiles to load
+            const tiles = await Promise.all(tilePromises);
+
+            // Stitch tiles together into heightData array
+            let minElev = Infinity;
+            let maxElev = -Infinity;
+
+            for (let i = 0; i < segments; i++) {
+                for (let j = 0; j < segments; j++) {
+                    // Determine which tile this segment belongs to
+                    const tileX = Math.floor((j / segments) * gridSize);
+                    const tileY = Math.floor((i / segments) * gridSize);
+                    const tileIndex = tileY * gridSize + tileX;
+                    const tile = tiles[tileIndex];
+
+                    if (!tile) continue;
+
+                    // Position within the tile (0-1 range)
+                    const localJ = ((j / segments) * gridSize) % 1;
+                    const localI = ((i / segments) * gridSize) % 1;
+
+                    // Sample from tile
+                    const pixelX = Math.floor(localJ * tile.width);
+                    const pixelY = Math.floor(localI * tile.height);
+                    const pixelIndex = (pixelY * tile.width + pixelX) * 4;
+
+                    const r = tile.pixels[pixelIndex];
+                    const g = tile.pixels[pixelIndex + 1];
+                    const b = tile.pixels[pixelIndex + 2];
+
+                    // Decode Terrarium format
+                    const elevationMeters = (r * 256 + g + b / 256) - 32768;
+                    const elevationFeet = elevationMeters * 3.28084;
+                    const relativeHeight = elevationFeet - config.bigSky.baseElevation;
+
+                    heightData[i * segments + j] = relativeHeight;
+
+                    minElev = Math.min(minElev, elevationFeet);
+                    maxElev = Math.max(maxElev, elevationFeet);
+                }
+            }
+
+            console.log(`✅ Full Big Sky terrain loaded from ${gridSize}x${gridSize} tiles!`);
+            console.log(`   Elevation range: ${minElev.toFixed(0)} - ${maxElev.toFixed(0)} ft`);
+            console.log(`   Vertical drop: ${(maxElev - minElev).toFixed(0)} ft`);
+
+            return heightData;
+        }
+
+        // Load a single Terrarium tile
+        async function loadSingleTerrainTile(xtile, ytile, zoom) {
             return new Promise((resolve, reject) => {
-                // Load Terrarium tile as image
                 const terrariumUrl = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${zoom}/${xtile}/${ytile}.png`;
-                console.log(`📥 Fetching Terrarium tile: ${terrariumUrl}`);
 
                 const img = new Image();
                 img.crossOrigin = 'anonymous';
 
                 img.onload = () => {
-                    console.log(`✅ Terrarium tile loaded! Image size: ${img.width}x${img.height}`);
-
-                    // Create canvas to extract pixel data
                     const canvas = document.createElement('canvas');
                     canvas.width = img.width;
                     canvas.height = img.height;
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0);
 
-                    // Get pixel data
                     const imageData = ctx.getImageData(0, 0, img.width, img.height);
-                    const pixels = imageData.data;
 
-                    console.log(`📊 Processing ${pixels.length / 4} elevation pixels...`);
-
-                    // Sample the Terrarium tile to fill our terrain grid
-                    let minElev = Infinity;
-                    let maxElev = -Infinity;
-
-                    for (let i = 0; i < segments; i++) {
-                        for (let j = 0; j < segments; j++) {
-                            // Map terrain segment to pixel in Terrarium tile
-                            const pixelX = Math.floor((j / segments) * img.width);
-                            const pixelY = Math.floor((i / segments) * img.height);
-                            const pixelIndex = (pixelY * img.width + pixelX) * 4;
-
-                            // Extract RGB values
-                            const r = pixels[pixelIndex];
-                            const g = pixels[pixelIndex + 1];
-                            const b = pixels[pixelIndex + 2];
-
-                            // Decode Terrarium format: elevation = (R * 256 + G + B / 256) - 32768
-                            const elevationMeters = (r * 256 + g + b / 256) - 32768;
-
-                            // Convert meters to feet for consistency with game units
-                            const elevationFeet = elevationMeters * 3.28084;
-
-                            // Store normalized height (relative to base)
-                            const relativeHeight = elevationFeet - config.bigSky.baseElevation;
-                            heightData[i * segments + j] = relativeHeight;
-
-                            minElev = Math.min(minElev, elevationFeet);
-                            maxElev = Math.max(maxElev, elevationFeet);
-                        }
-                    }
-
-                    console.log(`✅ Real Big Sky terrain loaded!`);
-                    console.log(`   Elevation range: ${minElev.toFixed(0)} - ${maxElev.toFixed(0)} ft`);
-                    console.log(`   Vertical drop: ${(maxElev - minElev).toFixed(0)} ft`);
-                    console.log(`   Peak elevation matches: ${maxElev.toFixed(0)} ft (actual: ${config.bigSky.peakElevation} ft)`);
-
-                    resolve(heightData);
+                    resolve({
+                        width: img.width,
+                        height: img.height,
+                        pixels: imageData.data
+                    });
                 };
 
-                img.onerror = (err) => {
-                    console.error('❌ Failed to load Terrarium tile:', err);
-                    console.warn('⚠️ Falling back to flat terrain');
-                    // Return flat terrain as fallback
-                    resolve(heightData.fill(0));
+                img.onerror = () => {
+                    console.warn(`⚠️ Failed to load tile (${xtile},${ytile})`);
+                    // Return flat tile as fallback
+                    resolve({
+                        width: 256,
+                        height: 256,
+                        pixels: new Uint8ClampedArray(256 * 256 * 4).fill(128) // Neutral elevation
+                    });
                 };
 
                 img.src = terrariumUrl;
+            });
+        }
+
+        // Load and stitch satellite imagery grid
+        async function loadSatelliteGrid(centerX, centerY, zoom, material) {
+            const gridSize = config.terrain.tileGrid;
+            const offset = Math.floor(gridSize / 2);
+            const tileSize = 256; // Standard tile size
+
+            // Create canvas for stitched texture
+            const canvas = document.createElement('canvas');
+            canvas.width = tileSize * gridSize;
+            canvas.height = tileSize * gridSize;
+            const ctx = canvas.getContext('2d');
+
+            console.log(`📥 Loading ${gridSize * gridSize} satellite tiles...`);
+
+            // Load all tiles
+            const tilePromises = [];
+            for (let ty = 0; ty < gridSize; ty++) {
+                for (let tx = 0; tx < gridSize; tx++) {
+                    const xtile = centerX + tx - offset;
+                    const ytile = centerY + ty - offset;
+                    tilePromises.push(loadSatelliteTile(xtile, ytile, zoom));
+                }
+            }
+
+            const tiles = await Promise.all(tilePromises);
+
+            // Stitch tiles onto canvas
+            let tilesLoaded = 0;
+            for (let ty = 0; ty < gridSize; ty++) {
+                for (let tx = 0; tx < gridSize; tx++) {
+                    const tileIndex = ty * gridSize + tx;
+                    const tile = tiles[tileIndex];
+
+                    if (tile) {
+                        ctx.drawImage(tile, tx * tileSize, ty * tileSize, tileSize, tileSize);
+                        tilesLoaded++;
+                    }
+                }
+            }
+
+            console.log(`✅ Stitched ${tilesLoaded}/${gridSize * gridSize} satellite tiles!`);
+
+            // Create texture from stitched canvas
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.ClampToEdgeWrapping;
+            texture.wrapT = THREE.ClampToEdgeWrapping;
+            texture.minFilter = THREE.LinearFilter;
+            texture.magFilter = THREE.LinearFilter;
+
+            material.map = texture;
+            material.needsUpdate = true;
+            material.color.setHex(0xffffff);
+
+            console.log(`✅ Satellite imagery applied to terrain!`);
+        }
+
+        // Load a single satellite tile
+        async function loadSatelliteTile(xtile, ytile, zoom) {
+            return new Promise((resolve) => {
+                const url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${ytile}/${xtile}`;
+
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+
+                img.onload = () => resolve(img);
+                img.onerror = () => {
+                    console.warn(`⚠️ Failed to load satellite tile (${xtile},${ytile})`);
+                    resolve(null);
+                };
+
+                img.src = url;
             });
         }
 
@@ -972,15 +1036,19 @@
                 }
             }
 
-            // Use stored peak location
-            player.position.set(peakLocation.x, peakLocation.height + 1, peakLocation.z);
+            // Start at Lone Peak Tram station - exiting onto the snow
+            const tramX = peakLocation.x + 25; // Tram is offset from peak
+            const tramZ = peakLocation.z;
+            const tramGroundLevel = peakLocation.height + 1; // Just above ground at tram
+
+            player.position.set(tramX, tramGroundLevel, tramZ);
             scene.add(player);
 
-            console.log(`✅ Player spawned at Lone Peak summit, height: ${peakLocation.height.toFixed(1)} ft at (${peakLocation.x.toFixed(1)}, ${peakLocation.z.toFixed(1)})`);
+            console.log(`✅ Player spawned at Lone Peak Tram station at (${tramX.toFixed(1)}, ${tramGroundLevel.toFixed(1)}, ${tramZ.toFixed(1)})`);
 
-            // Position camera behind and above player
-            camera.position.set(peakLocation.x, peakLocation.height + 50, peakLocation.z + 80);
-            camera.lookAt(new THREE.Vector3(peakLocation.x, peakLocation.height, peakLocation.z));
+            // Position camera behind and above player for dramatic exit from tram
+            camera.position.set(tramX, tramGroundLevel + 15, tramZ + 40);
+            camera.lookAt(new THREE.Vector3(tramX, tramGroundLevel, tramZ));
 
             console.log(`✅ Camera positioned`);
 
