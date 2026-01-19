@@ -1,0 +1,2237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Big Sky Ski Cop - Escape the Patrol!</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            overflow: hidden;
+            background: #000;
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            color: white;
+            font-size: 14px;
+        }
+
+        #wantedLevel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 15px 25px;
+            border-radius: 10px;
+            border: 3px solid #ff0000;
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
+        }
+
+        .wanted-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #ff0000;
+            text-align: center;
+            margin-bottom: 10px;
+            letter-spacing: 2px;
+        }
+
+        .stars {
+            display: flex;
+            gap: 5px;
+            justify-content: center;
+        }
+
+        .star {
+            font-size: 24px;
+            color: #333;
+            text-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+        }
+
+        .star.active {
+            color: #ffd700;
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.8);
+            animation: pulse 0.5s ease-in-out;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.3); }
+        }
+
+        #stats {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            min-width: 200px;
+        }
+
+        .stat-line {
+            margin: 5px 0;
+            display: flex;
+            justify-content: space-between;
+            gap: 15px;
+        }
+
+        .stat-label {
+            color: #aaa;
+        }
+
+        .stat-value {
+            color: #fff;
+            font-weight: bold;
+        }
+
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            max-width: 300px;
+        }
+
+        #instructions h3 {
+            margin-bottom: 10px;
+            color: #ffd700;
+        }
+
+        #instructions p {
+            margin: 5px 0;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.95);
+            padding: 40px;
+            border-radius: 15px;
+            border: 3px solid #ff0000;
+            text-align: center;
+            display: none;
+            pointer-events: all;
+        }
+
+        #gameOver h1 {
+            font-size: 48px;
+            color: #ff0000;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px rgba(255, 0, 0, 0.8);
+        }
+
+        #gameOver p {
+            font-size: 18px;
+            margin: 10px 0;
+        }
+
+        #restartBtn {
+            margin-top: 20px;
+            padding: 15px 30px;
+            font-size: 18px;
+            background: #ff0000;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            pointer-events: all;
+            transition: all 0.3s;
+        }
+
+        #restartBtn:hover {
+            background: #cc0000;
+            transform: scale(1.05);
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.95);
+            padding: 40px;
+            border-radius: 15px;
+            text-align: center;
+            z-index: 1000;
+        }
+
+        .spinner {
+            border: 4px solid #333;
+            border-top: 4px solid #ffd700;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .patrol-alert {
+            position: absolute;
+            top: 120px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 0, 0, 0.9);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: bold;
+            display: none;
+            animation: slideDown 0.3s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                top: 80px;
+                opacity: 0;
+            }
+            to {
+                top: 120px;
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="loading">
+        <div class="spinner"></div>
+        <h2>Loading Big Sky Resort...</h2>
+        <p>Fetching Lone Mountain terrain data</p>
+    </div>
+
+    <div id="ui">
+        <div id="wantedLevel">
+            <div class="wanted-title">WANTED LEVEL</div>
+            <div class="stars">
+                <span class="star" id="star1">★</span>
+                <span class="star" id="star2">★</span>
+                <span class="star" id="star3">★</span>
+                <span class="star" id="star4">★</span>
+                <span class="star" id="star5">★</span>
+            </div>
+        </div>
+
+        <div id="stats">
+            <div class="stat-line">
+                <span class="stat-label">Speed:</span>
+                <span class="stat-value" id="speed">0 mph</span>
+            </div>
+            <div class="stat-line">
+                <span class="stat-label">Altitude:</span>
+                <span class="stat-value" id="altitude">11,166 ft</span>
+            </div>
+            <div class="stat-line">
+                <span class="stat-label">Patrol Evaded:</span>
+                <span class="stat-value" id="evaded">0</span>
+            </div>
+            <div class="stat-line">
+                <span class="stat-label">Distance:</span>
+                <span class="stat-value" id="distance">0 ft</span>
+            </div>
+        </div>
+
+        <div id="instructions">
+            <h3>Controls</h3>
+            <p><strong>W/S:</strong> Speed up / Slow down</p>
+            <p><strong>A/D:</strong> Turn left / right</p>
+            <p><strong>Q/E:</strong> Edge control (carve)</p>
+            <p><strong>Space:</strong> Jump</p>
+            <p><strong>X:</strong> Eject skis</p>
+            <p><strong>Click:</strong> Throw bomb</p>
+            <p><strong>Mouse:</strong> Look around</p>
+            <p style="margin-top: 10px; color: #ff6666;"><strong>CAUTION:</strong> All runs are closed! Ski Patrol is after you!</p>
+        </div>
+
+        <div class="patrol-alert" id="patrolAlert">
+            PATROL APPROACHING!
+        </div>
+
+        <div id="gameOver">
+            <h1>BUSTED!</h1>
+            <p id="arrestMessage">You were apprehended by Ski Patrol</p>
+            <p>Patrol Evaded: <span id="finalEvaded">0</span></p>
+            <p>Distance: <span id="finalDistance">0 ft</span></p>
+            <button id="restartBtn">Try Again</button>
+        </div>
+    </div>
+
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <!-- Cannon.js for physics -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+
+    <script>
+        // Game configuration
+        const config = {
+            bigSky: {
+                // Lone Mountain Peak coordinates
+                lat: 45.2849,
+                lon: -111.4008,
+                peakElevation: 11166, // feet
+                baseElevation: 7500   // feet
+            },
+            terrain: {
+                size: 4096,  // Bigger terrain - 4km x 4km (still 2x original)
+                segments: 64, // Keep segments low for performance
+                heightScale: 5.0, // More vertical exaggeration for dramatic slopes
+                tileZoom: 19 // MAXIMUM zoom for ultra high-res satellite imagery
+            },
+            physics: {
+                gravity: -32.2, // ft/s² (adjusted for feet)
+                friction: 0.3,
+                restitution: 0.2
+            }
+        };
+
+        // Game state
+        let scene, camera, renderer, world;
+        let player, playerBody;
+        let terrain, terrainBody;
+        let patrollers = [];
+        let vehicles = [];
+        let bombs = []; // Track active bombs
+        let snowParticles = []; // Snow spray particles
+        let wantedLevel = 0;
+        let evadedCount = 0;
+        let totalDistance = 0;
+        let gameActive = true;
+        let keys = {};
+        let mouseX = 0, mouseY = 0;
+
+        // Player physics state
+        let playerVelocity = { x: 0, y: 0, z: 0 };
+        let playerRotation = 0;
+        let playerPitch = 0;
+        let edgeAngle = 0; // for carving
+        let isAirborne = false;
+        let isRagdoll = false;
+        let skisEjected = false; // Track if player ejected from skis
+
+        // Initialize the game
+        async function init() {
+            console.log('🎮 Initializing Big Sky Ski Cop...');
+
+            // Set up Three.js scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB); // Sky blue
+            scene.fog = new THREE.Fog(0x87CEEB, 2000, 8000); // Push fog way back
+
+            console.log('✅ Scene created');
+
+            // Camera setup (third-person behind player)
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 5000);
+            camera.position.set(0, 10, 20);
+
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({
+                canvas: document.getElementById('gameCanvas'),
+                antialias: false // Disable for better performance
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = false; // Disable shadows for performance
+
+            // Lighting - make it brighter so we can see the terrain
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            directionalLight.position.set(100, 200, 100);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.camera.left = -500;
+            directionalLight.shadow.camera.right = 500;
+            directionalLight.shadow.camera.top = 500;
+            directionalLight.shadow.camera.bottom = -500;
+            directionalLight.shadow.camera.far = 1000;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            scene.add(directionalLight);
+
+            // Initialize physics world
+            console.log('⚙️ Initializing physics...');
+            world = new CANNON.World();
+            world.gravity.set(0, config.physics.gravity, 0);
+            world.broadphase = new CANNON.NaiveBroadphase();
+            world.solver.iterations = 10;
+            console.log('✅ Physics ready');
+
+            // Load terrain data
+            console.log('🏔️ Loading terrain...');
+            await loadTerrain();
+
+            // Create player
+            console.log('🎿 Creating player...');
+            createPlayer();
+            console.log('✅ Player ready');
+
+            // Create initial patrol
+            setTimeout(() => {
+                wantedLevel = 1;
+                updateWantedLevel();
+                spawnPatroller();
+                showPatrolAlert("WANTED: Skiing on closed run!");
+            }, 2000);
+
+            // Event listeners
+            document.addEventListener('keydown', (e) => keys[e.code] = true);
+            document.addEventListener('keyup', (e) => keys[e.code] = false);
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('click', throwBomb);
+            document.getElementById('restartBtn').addEventListener('click', restartGame);
+
+            // Hide loading screen
+            document.getElementById('loading').style.display = 'none';
+
+            console.log('🎮 Game ready! Use WASD to ski, Space to jump, QE to carve!');
+
+            // Start game loop
+            animate();
+        }
+
+        // Load terrain from Terrarium tiles
+        async function loadTerrain() {
+            const { lat, lon } = config.bigSky;
+            const zoom = config.terrain.tileZoom;
+
+            // Convert lat/lon to tile coordinates
+            const n = Math.pow(2, zoom);
+            const xtile = Math.floor((lon + 180) / 360 * n);
+            const ytile = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n);
+
+            // Create terrain geometry
+            const geometry = new THREE.PlaneGeometry(
+                config.terrain.size,
+                config.terrain.size,
+                config.terrain.segments - 1,
+                config.terrain.segments - 1
+            );
+
+            // Load height data from Terrarium tiles
+            const heightData = await loadHeightData(xtile, ytile, zoom);
+
+            // Apply height data to terrain BEFORE rotation
+            const vertices = geometry.attributes.position.array;
+            const segments = config.terrain.segments;
+
+            for (let i = 0; i < segments; i++) {
+                for (let j = 0; j < segments; j++) {
+                    const idx = (i * segments + j) * 3;
+                    const heightIdx = i * segments + j;
+
+                    if (heightData[heightIdx] !== undefined) {
+                        // Apply height to Z component (which becomes Y after rotation)
+                        vertices[idx + 2] = heightData[heightIdx] * config.terrain.heightScale;
+                    }
+                }
+            }
+
+            geometry.attributes.position.needsUpdate = true;
+
+            // NOW rotate to make it horizontal (XZ plane with Y as height)
+            geometry.rotateX(-Math.PI / 2);
+
+            // CRITICAL: Recompute normals AFTER rotation
+            geometry.computeVertexNormals();
+
+            console.log(`✅ Terrain geometry created: ${segments}x${segments} = ${segments * segments} vertices`);
+            console.log(`   Height range: ${Math.min(...heightData).toFixed(1)} to ${Math.max(...heightData).toFixed(1)}`);
+
+            // Create realistic snow material
+            const material = new THREE.MeshStandardMaterial({
+                color: 0xffffff, // White snow base
+                roughness: 0.9,
+                metalness: 0.0,
+                wireframe: false, // Solid terrain
+                side: THREE.DoubleSide
+            });
+
+            console.log('✅ Terrain material created (white snow)');
+
+            // Load high-resolution satellite imagery with proper texture mapping
+            const textureLoader = new THREE.TextureLoader();
+            textureLoader.crossOrigin = 'anonymous';
+
+            console.log(`🛰️ Loading satellite imagery at zoom ${zoom}...`);
+
+            // Try to load satellite texture - use lower zoom if high zoom fails
+            const tryLoadTexture = (attemptZoom) => {
+                const url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${attemptZoom}/${ytile}/${xtile}`;
+                console.log(`Attempting to load: ${url}`);
+
+                textureLoader.load(
+                    url,
+                    function (texture) {
+                        console.log(`✅ Satellite tile loaded at zoom ${attemptZoom}!`);
+                        texture.wrapS = THREE.ClampToEdgeWrapping;
+                        texture.wrapT = THREE.ClampToEdgeWrapping;
+                        texture.minFilter = THREE.LinearFilter;
+                        texture.magFilter = THREE.LinearFilter;
+                        material.map = texture;
+                        material.needsUpdate = true;
+                        // Remove the green color once texture loads
+                        material.color.setHex(0xffffff);
+                    },
+                    undefined,
+                    function (err) {
+                        console.warn(`⚠️ Could not load satellite imagery at zoom ${attemptZoom}`);
+                        // Try lower zoom level if high zoom fails
+                        if (attemptZoom > 15) {
+                            console.log(`Trying lower zoom level: ${attemptZoom - 2}`);
+                            tryLoadTexture(attemptZoom - 2);
+                        } else {
+                            console.warn('Using white snow texture');
+                        }
+                    }
+                );
+            };
+
+            // Start loading at requested zoom level
+            tryLoadTexture(zoom);
+
+            terrain = new THREE.Mesh(geometry, material);
+            scene.add(terrain);
+
+            console.log(`✅ Terrain mesh added to scene at position (${terrain.position.x}, ${terrain.position.y}, ${terrain.position.z})`);
+            console.log(`   Terrain visible: ${terrain.visible}, Vertices: ${geometry.attributes.position.count}`);
+            console.log(`   Terrain size: ${config.terrain.size} x ${config.terrain.size}`);
+
+            // Terrain loaded successfully
+            console.log('✅ Terrain loaded successfully');
+
+            // Add some trees
+            addTreesAndObstacles();
+        }
+
+        // Load height data - Big Sky Lone Mountain profile
+        async function loadHeightData(centerX, centerY, zoom) {
+            const segments = config.terrain.segments;
+            const heightData = new Array(segments * segments).fill(0);
+
+            console.log('🏔️ Generating Lone Mountain terrain...');
+
+            // Lone Mountain actual stats:
+            // Peak: 11,166 ft
+            // Base: 7,500 ft
+            // Vertical drop: 3,666 ft
+            // We'll simulate this profile
+
+            const peakHeight = 300; // Scaled height for peak (bigger terrain = taller peaks)
+            const baseHeight = 0;
+
+            for (let i = 0; i < segments; i++) {
+                for (let j = 0; j < segments; j++) {
+                    const x = (j / segments - 0.5) * 2;
+                    const z = (i / segments - 0.5) * 2;
+
+                    // Distance from center (peak)
+                    const distFromPeak = Math.sqrt(x * x + z * z);
+
+                    // Create Lone Mountain's distinctive peak shape
+                    // Sharp peak at top (north), gradual descent
+                    let height = peakHeight * Math.exp(-distFromPeak * 0.8);
+
+                    // Add ridgelines - Lone Mountain has distinct ridges
+                    height += Math.sin(Math.atan2(z, x) * 3) * 8 * (1 - distFromPeak);
+
+                    // Main slope gradient (north to south)
+                    const slopeGradient = (0.7 - i / segments) * 80;
+                    height += slopeGradient;
+
+                    // Add bowl features (Big Sky has several bowls)
+                    const bowlX = x - 0.3;
+                    const bowlZ = z + 0.2;
+                    const bowlDist = Math.sqrt(bowlX * bowlX + bowlZ * bowlZ);
+                    if (bowlDist < 0.4) {
+                        height -= (0.4 - bowlDist) * 15; // Create bowl depression
+                    }
+
+                    // Add moguls and terrain variation
+                    height += Math.sin(x * 15) * Math.cos(z * 15) * 1.5;
+                    height += Math.sin(x * 8 + z * 8) * 2;
+
+                    // Natural terrain noise
+                    height += (Math.random() - 0.5) * 3;
+
+                    // Ensure no negative heights
+                    height = Math.max(baseHeight, height);
+
+                    heightData[i * segments + j] = height;
+                }
+            }
+
+            console.log('✅ Lone Mountain terrain generated with peak, ridges, and bowls');
+            return heightData;
+        }
+
+        // Store peak location globally to avoid recalculating
+        let peakLocation = { x: 0, z: 0, height: 0 };
+
+        // Add trees and obstacles
+        function addTreesAndObstacles() {
+            // Use stored peak location
+            const peakX = peakLocation.x;
+            const peakZ = peakLocation.z;
+            const maxHeight = peakLocation.height;
+
+            // Create detailed Lone Peak Tram station at the summit
+            const tramStationGroup = new THREE.Group();
+
+            // Main station building (brown/tan structure)
+            const stationBase = new THREE.Mesh(
+                new THREE.BoxGeometry(20, 10, 15),
+                new THREE.MeshStandardMaterial({ color: 0xD2B48C }) // Tan
+            );
+            stationBase.position.y = 5;
+            tramStationGroup.add(stationBase);
+
+            // Roof (darker brown)
+            const roof = new THREE.Mesh(
+                new THREE.ConeGeometry(12, 5, 4),
+                new THREE.MeshStandardMaterial({ color: 0x8B4513 })
+            );
+            roof.rotation.y = Math.PI / 4;
+            roof.position.y = 12;
+            tramStationGroup.add(roof);
+
+            // Platform/deck
+            const platform = new THREE.Mesh(
+                new THREE.BoxGeometry(25, 0.5, 20),
+                new THREE.MeshStandardMaterial({ color: 0x696969 }) // Gray
+            );
+            platform.position.y = 0.25;
+            tramStationGroup.add(platform);
+
+            // Tram cable/wire support tower
+            const tower = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.5, 0.8, 25, 8),
+                new THREE.MeshStandardMaterial({ color: 0x555555 })
+            );
+            tower.position.set(-15, 12.5, 0);
+            tramStationGroup.add(tower);
+
+            // Cable (thin line representing tram cable)
+            const cableGeometry = new THREE.CylinderGeometry(0.1, 0.1, 100, 6);
+            const cableMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+            const cable = new THREE.Mesh(cableGeometry, cableMaterial);
+            cable.rotation.z = Math.PI / 2;
+            cable.position.set(-65, 25, 0);
+            tramStationGroup.add(cable);
+
+            // Gondola/Tram car (red cable car)
+            const gondola = new THREE.Group();
+
+            // Gondola body
+            const gondolaBody = new THREE.Mesh(
+                new THREE.BoxGeometry(8, 6, 6),
+                new THREE.MeshStandardMaterial({ color: 0xFF4500 }) // Red-orange
+            );
+            gondola.add(gondolaBody);
+
+            // Gondola windows (blue-tinted)
+            const windowMaterial = new THREE.MeshStandardMaterial({
+                color: 0x87CEEB,
+                transparent: true,
+                opacity: 0.3
+            });
+            const windowGeometry = new THREE.BoxGeometry(7.5, 4, 0.2);
+
+            const windowFront = new THREE.Mesh(windowGeometry, windowMaterial);
+            windowFront.position.set(0, 1, 3);
+            gondola.add(windowFront);
+
+            const windowBack = new THREE.Mesh(windowGeometry, windowMaterial);
+            windowBack.position.set(0, 1, -3);
+            gondola.add(windowBack);
+
+            // Gondola suspension
+            const suspensionGeometry = new THREE.CylinderGeometry(0.2, 0.2, 4, 6);
+            const suspensionMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 });
+            const suspension = new THREE.Mesh(suspensionGeometry, suspensionMaterial);
+            suspension.position.y = 5;
+            gondola.add(suspension);
+
+            // Position gondola near station
+            gondola.position.set(-8, 12, 0);
+            tramStationGroup.add(gondola);
+
+            // Position entire tram station at peak
+            tramStationGroup.position.set(peakX + 25, maxHeight, peakZ);
+            scene.add(tramStationGroup);
+
+            console.log('✅ Added detailed Lone Peak Tram with gondola');
+
+            // Add "CLOSED" run signs at the peak
+            const signPositions = [
+                { x: peakX - 15, z: peakZ + 20 },
+                { x: peakX + 15, z: peakZ + 20 },
+                { x: peakX, z: peakZ + 25 }
+            ];
+
+            signPositions.forEach(pos => {
+                const signPost = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.3, 0.3, 6, 8),
+                    new THREE.MeshStandardMaterial({ color: 0x8B4513 })
+                );
+                const sign = new THREE.Mesh(
+                    new THREE.BoxGeometry(8, 4, 0.5),
+                    new THREE.MeshStandardMaterial({ color: 0xff0000 })
+                );
+                const signY = maxHeight; // Use stored height
+                signPost.position.set(pos.x, signY + 3, pos.z);
+                sign.position.set(pos.x, signY + 5, pos.z);
+                scene.add(signPost);
+                scene.add(sign);
+            });
+
+            // Add trees on the slopes - much fewer
+            const treeCount = 5; // Reduced even more for performance
+            const treeGeometry = new THREE.ConeGeometry(2, 10, 8);
+            const treeMaterial = new THREE.MeshStandardMaterial({ color: 0x1a5f1a });
+
+            for (let i = 0; i < treeCount; i++) {
+                const x = (Math.random() - 0.5) * config.terrain.size * 0.8;
+                const z = (Math.random() - 0.5) * config.terrain.size * 0.8;
+                const y = getTerrainHeight(x, z);
+
+                const tree = new THREE.Mesh(treeGeometry, treeMaterial);
+                tree.position.set(x, y + 5, z);
+                tree.castShadow = true;
+                tree.receiveShadow = true;
+                scene.add(tree);
+            }
+
+            console.log('✅ Added Lone Peak Tram station and CLOSED run signs');
+
+            // Add Liberty Bowl snow fences (visible on satellite imagery at the top)
+            // These are the safety fences along the ridge lines
+            const fencePositions = [
+                // Ridge line running east-west from peak
+                { startX: peakX - 80, startZ: peakZ - 20, endX: peakX + 80, endZ: peakZ - 20 },
+                { startX: peakX - 80, startZ: peakZ - 15, endX: peakX + 80, endZ: peakZ - 15 },
+                // North ridge
+                { startX: peakX - 60, startZ: peakZ + 10, endX: peakX - 40, endZ: peakZ + 80 },
+                { startX: peakX - 55, startZ: peakZ + 10, endX: peakX - 35, endZ: peakZ + 80 },
+                // South ridge
+                { startX: peakX + 40, startZ: peakZ + 10, endX: peakX + 60, endZ: peakZ + 80 },
+                { startX: peakX + 45, startZ: peakZ + 10, endX: peakX + 65, endZ: peakZ + 80 }
+            ];
+
+            fencePositions.forEach(fence => {
+                const length = Math.sqrt(
+                    Math.pow(fence.endX - fence.startX, 2) +
+                    Math.pow(fence.endZ - fence.startZ, 2)
+                );
+                const angle = Math.atan2(fence.endZ - fence.startZ, fence.endX - fence.startX);
+
+                const fenceGeometry = new THREE.BoxGeometry(length, 3, 0.2);
+                const fenceMaterial = new THREE.MeshStandardMaterial({
+                    color: 0xff6600, // Orange safety fence
+                    transparent: true,
+                    opacity: 0.7
+                });
+                const fenceMesh = new THREE.Mesh(fenceGeometry, fenceMaterial);
+
+                const midX = (fence.startX + fence.endX) / 2;
+                const midZ = (fence.startZ + fence.endZ) / 2;
+                const fenceY = getTerrainHeight(midX, midZ);
+
+                fenceMesh.position.set(midX, fenceY + 1.5, midZ);
+                fenceMesh.rotation.y = angle;
+                scene.add(fenceMesh);
+            });
+
+            console.log('✅ Added Liberty Bowl snow fences');
+        }
+
+        // Get terrain height at position
+        function getTerrainHeight(x, z) {
+            if (!terrain) {
+                return 100; // Default height if terrain not loaded yet
+            }
+
+            // Simple raycast down to find terrain height
+            const raycaster = new THREE.Raycaster(
+                new THREE.Vector3(x, 10000, z), // Start way up
+                new THREE.Vector3(0, -1, 0)
+            );
+            const intersects = raycaster.intersectObject(terrain, true);
+
+            if (intersects.length > 0) {
+                return intersects[0].point.y;
+            }
+
+            // Fallback: return a high value at the edges
+            return 100;
+        }
+
+        // Create player (skier)
+        function createPlayer() {
+            // HUMANOID PLAYER MODEL - realistic skiing body
+
+            // HEAD - Sphere with helmet
+            const headGeometry = new THREE.SphereGeometry(0.35, 16, 16);
+            const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffdbac }); // Skin tone
+            const head = new THREE.Mesh(headGeometry, headMaterial);
+            head.position.y = 1.5;
+
+            // HELMET
+            const helmetGeometry = new THREE.SphereGeometry(0.38, 16, 16, 0, Math.PI * 2, 0, Math.PI * 0.6);
+            const helmetMaterial = new THREE.MeshStandardMaterial({ color: 0x0066cc }); // Blue helmet
+            const helmet = new THREE.Mesh(helmetGeometry, helmetMaterial);
+            helmet.position.y = 1.5;
+
+            // TORSO - Box geometry for realistic body
+            const torsoGeometry = new THREE.BoxGeometry(0.6, 0.9, 0.4);
+            const torsoMaterial = new THREE.MeshStandardMaterial({ color: 0x0066cc }); // Blue jacket
+            const torso = new THREE.Mesh(torsoGeometry, torsoMaterial);
+            torso.position.y = 0.6;
+            torso.rotation.x = 0.2; // Lean forward slightly for skiing stance
+
+            // ARMS - Cylinders positioned at shoulders
+            const armGeometry = new THREE.CylinderGeometry(0.12, 0.12, 0.9, 8);
+            const armMaterial = new THREE.MeshStandardMaterial({ color: 0x0066cc }); // Jacket sleeves
+
+            // Left arm
+            const leftArm = new THREE.Mesh(armGeometry, armMaterial);
+            leftArm.position.set(-0.4, 0.5, 0);
+            leftArm.rotation.z = 0.3; // Angled for skiing pole position
+
+            // Right arm
+            const rightArm = new THREE.Mesh(armGeometry, armMaterial);
+            rightArm.position.set(0.4, 0.5, 0);
+            rightArm.rotation.z = -0.3;
+
+            // LEGS - Cylinders positioned at hips
+            const legGeometry = new THREE.CylinderGeometry(0.15, 0.13, 1.0, 8);
+            const legMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 }); // Black ski pants
+
+            // Left leg
+            const leftLeg = new THREE.Mesh(legGeometry, legMaterial);
+            leftLeg.position.set(-0.2, -0.4, 0);
+            leftLeg.rotation.x = 0.1; // Slight bend for skiing stance
+
+            // Right leg
+            const rightLeg = new THREE.Mesh(legGeometry, legMaterial);
+            rightLeg.position.set(0.2, -0.4, 0);
+            rightLeg.rotation.x = 0.1;
+
+            // SKI BOOTS
+            const bootGeometry = new THREE.BoxGeometry(0.25, 0.3, 0.4);
+            const bootMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+
+            const leftBoot = new THREE.Mesh(bootGeometry, bootMaterial);
+            leftBoot.position.set(-0.2, -1.0, 0.05);
+
+            const rightBoot = new THREE.Mesh(bootGeometry, bootMaterial);
+            rightBoot.position.set(0.2, -1.0, 0.05);
+
+            // SKIS
+            const skiGeometry = new THREE.BoxGeometry(0.2, 0.08, 2.5);
+            const skiMaterial = new THREE.MeshStandardMaterial({ color: 0xff6600 }); // Orange skis
+
+            const skiLeft = new THREE.Mesh(skiGeometry, skiMaterial);
+            skiLeft.position.set(-0.2, -1.2, 0);
+
+            const skiRight = new THREE.Mesh(skiGeometry, skiMaterial);
+            skiRight.position.set(0.2, -1.2, 0);
+
+            // SKI POLES
+            const poleGeometry = new THREE.CylinderGeometry(0.03, 0.03, 1.2, 6);
+            const poleMaterial = new THREE.MeshStandardMaterial({ color: 0xaaaaaa }); // Silver poles
+
+            const leftPole = new THREE.Mesh(poleGeometry, poleMaterial);
+            leftPole.position.set(-0.5, 0.2, 0.3);
+            leftPole.rotation.x = -0.5;
+            leftPole.rotation.z = 0.3;
+
+            const rightPole = new THREE.Mesh(poleGeometry, poleMaterial);
+            rightPole.position.set(0.5, 0.2, 0.3);
+            rightPole.rotation.x = -0.5;
+            rightPole.rotation.z = -0.3;
+
+            // Assemble humanoid player
+            player = new THREE.Group();
+            player.add(head);
+            player.add(helmet);
+            player.add(torso);
+            player.add(leftArm);
+            player.add(rightArm);
+            player.add(leftLeg);
+            player.add(rightLeg);
+            player.add(leftBoot);
+            player.add(rightBoot);
+            player.add(skiLeft);
+            player.add(skiRight);
+            player.add(leftPole);
+            player.add(rightPole);
+            player.castShadow = true;
+
+            // Find peak ONCE and store it
+            console.log('🔍 Finding mountain peak...');
+            const searchSize = config.terrain.size * 0.4;
+            const searchStep = 50; // Larger step for faster search
+
+            for (let x = -searchSize; x < searchSize; x += searchStep) {
+                for (let z = -searchSize; z < searchSize; z += searchStep) {
+                    const h = getTerrainHeight(x, z);
+                    if (h > peakLocation.height) {
+                        peakLocation.height = h;
+                        peakLocation.x = x;
+                        peakLocation.z = z;
+                    }
+                }
+            }
+
+            // Use stored peak location
+            player.position.set(peakLocation.x, peakLocation.height + 1, peakLocation.z);
+            scene.add(player);
+
+            console.log(`✅ Player spawned at Lone Peak summit, height: ${peakLocation.height.toFixed(1)} ft at (${peakLocation.x.toFixed(1)}, ${peakLocation.z.toFixed(1)})`);
+
+            // Position camera behind and above player
+            camera.position.set(peakLocation.x, peakLocation.height + 50, peakLocation.z + 80);
+            camera.lookAt(new THREE.Vector3(peakLocation.x, peakLocation.height, peakLocation.z));
+
+            console.log(`✅ Camera positioned`);
+
+            // Physics body (we don't actually use Cannon.js for terrain collision anymore)
+            playerBody = null;
+        }
+
+        // Create a patroller
+        function spawnPatroller() {
+            const patrollerGroup = new THREE.Group();
+
+            // HUMANOID SKI PATROL MODEL
+
+            // HEAD
+            const headGeometry = new THREE.SphereGeometry(0.35, 16, 16);
+            const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffdbac }); // Skin tone
+            const head = new THREE.Mesh(headGeometry, headMaterial);
+            head.position.y = 1.5;
+
+            // HELMET (red for patrol)
+            const helmetGeometry = new THREE.SphereGeometry(0.38, 16, 16, 0, Math.PI * 2, 0, Math.PI * 0.6);
+            const helmetMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 }); // Red patrol helmet
+            const helmet = new THREE.Mesh(helmetGeometry, helmetMaterial);
+            helmet.position.y = 1.5;
+
+            // TORSO - Dark green patrol jacket
+            const torsoGeometry = new THREE.BoxGeometry(0.6, 0.9, 0.4);
+            const torsoMaterial = new THREE.MeshStandardMaterial({ color: 0x003300 }); // Dark green
+            const torso = new THREE.Mesh(torsoGeometry, torsoMaterial);
+            torso.position.y = 0.6;
+            torso.rotation.x = 0.2; // Lean forward for skiing
+
+            // BLACK PATROL VEST
+            const vestGeometry = new THREE.BoxGeometry(0.65, 0.7, 0.42);
+            const vestMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 });
+            const vest = new THREE.Mesh(vestGeometry, vestMaterial);
+            vest.position.y = 0.7;
+
+            // GREEN MEDICAL CROSS on vest (vertical bar)
+            const crossVertGeometry = new THREE.BoxGeometry(0.08, 0.25, 0.02);
+            const crossMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 }); // Bright green
+            const crossVert = new THREE.Mesh(crossVertGeometry, crossMaterial);
+            crossVert.position.set(0, 0.8, 0.22);
+
+            // GREEN MEDICAL CROSS (horizontal bar)
+            const crossHorGeometry = new THREE.BoxGeometry(0.25, 0.08, 0.02);
+            const crossHor = new THREE.Mesh(crossHorGeometry, crossMaterial);
+            crossHor.position.set(0, 0.8, 0.22);
+
+            // ARMS
+            const armGeometry = new THREE.CylinderGeometry(0.12, 0.12, 0.9, 8);
+            const armMaterial = new THREE.MeshStandardMaterial({ color: 0x003300 });
+
+            const leftArm = new THREE.Mesh(armGeometry, armMaterial);
+            leftArm.position.set(-0.4, 0.5, 0);
+            leftArm.rotation.z = 0.3;
+
+            const rightArm = new THREE.Mesh(armGeometry, armMaterial);
+            rightArm.position.set(0.4, 0.5, 0);
+            rightArm.rotation.z = -0.3;
+
+            // LEGS - Black patrol pants
+            const legGeometry = new THREE.CylinderGeometry(0.15, 0.13, 1.0, 8);
+            const legMaterial = new THREE.MeshStandardMaterial({ color: 0x111111 });
+
+            const leftLeg = new THREE.Mesh(legGeometry, legMaterial);
+            leftLeg.position.set(-0.2, -0.4, 0);
+            leftLeg.rotation.x = 0.1;
+
+            const rightLeg = new THREE.Mesh(legGeometry, legMaterial);
+            rightLeg.position.set(0.2, -0.4, 0);
+            rightLeg.rotation.x = 0.1;
+
+            // SKI BOOTS
+            const bootGeometry = new THREE.BoxGeometry(0.25, 0.3, 0.4);
+            const bootMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 });
+
+            const leftBoot = new THREE.Mesh(bootGeometry, bootMaterial);
+            leftBoot.position.set(-0.2, -1.0, 0.05);
+
+            const rightBoot = new THREE.Mesh(bootGeometry, bootMaterial);
+            rightBoot.position.set(0.2, -1.0, 0.05);
+
+            // SKIS
+            const skiGeometry = new THREE.BoxGeometry(0.2, 0.08, 2.5);
+            const skiMaterial = new THREE.MeshStandardMaterial({ color: 0xcccccc }); // Gray patrol skis
+
+            const skiLeft = new THREE.Mesh(skiGeometry, skiMaterial);
+            skiLeft.position.set(-0.2, -1.2, 0);
+
+            const skiRight = new THREE.Mesh(skiGeometry, skiMaterial);
+            skiRight.position.set(0.2, -1.2, 0);
+
+            // SKI POLES
+            const poleGeometry = new THREE.CylinderGeometry(0.03, 0.03, 1.2, 6);
+            const poleMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
+
+            const leftPole = new THREE.Mesh(poleGeometry, poleMaterial);
+            leftPole.position.set(-0.5, 0.2, 0.3);
+            leftPole.rotation.x = -0.5;
+            leftPole.rotation.z = 0.3;
+
+            const rightPole = new THREE.Mesh(poleGeometry, poleMaterial);
+            rightPole.position.set(0.5, 0.2, 0.3);
+            rightPole.rotation.x = -0.5;
+            rightPole.rotation.z = -0.3;
+
+            // Assemble humanoid patrol
+            patrollerGroup.add(head);
+            patrollerGroup.add(helmet);
+            patrollerGroup.add(torso);
+            patrollerGroup.add(vest);
+            patrollerGroup.add(crossVert); // Green cross
+            patrollerGroup.add(crossHor); // Green cross
+            patrollerGroup.add(leftArm);
+            patrollerGroup.add(rightArm);
+            patrollerGroup.add(leftLeg);
+            patrollerGroup.add(rightLeg);
+            patrollerGroup.add(leftBoot);
+            patrollerGroup.add(rightBoot);
+            patrollerGroup.add(skiLeft);
+            patrollerGroup.add(skiRight);
+            patrollerGroup.add(leftPole);
+            patrollerGroup.add(rightPole);
+
+            // Spawn ABOVE and BEHIND player (uphill) so they ski down towards you
+            const spawnDistance = 60 + Math.random() * 60; // Distance uphill
+            const spawnX = player.position.x + (Math.random() - 0.5) * 50; // Spread out
+            const spawnZ = player.position.z + spawnDistance; // BEHIND player (uphill)
+            const spawnY = getTerrainHeight(spawnX, spawnZ) + 2;
+
+            patrollerGroup.position.set(spawnX, spawnY, spawnZ);
+            patrollerGroup.castShadow = true;
+            scene.add(patrollerGroup);
+
+            const patroller = {
+                mesh: patrollerGroup,
+                velocity: { x: 0, y: 0, z: 0 },
+                state: 'blocking', // blocking, chasing, shooting
+                crashed: false
+            };
+
+            patrollers.push(patroller);
+        }
+
+        // Spawn vehicle (snowmobile or ski cat)
+        function spawnVehicle(type = 'snowmobile') {
+            const vehicleGroup = new THREE.Group();
+
+            if (type === 'snowmobile') {
+                // DETAILED SNOWMOBILE MODEL
+
+                // Main body (red patrol snowmobile)
+                const bodyGeometry = new THREE.BoxGeometry(1.8, 1.2, 3.5);
+                const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+                const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+                body.position.y = 0.8;
+                vehicleGroup.add(body);
+
+                // Seat
+                const seatGeometry = new THREE.BoxGeometry(1.5, 0.6, 1.2);
+                const seatMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 });
+                const seat = new THREE.Mesh(seatGeometry, seatMaterial);
+                seat.position.set(0, 1.5, 0.3);
+                vehicleGroup.add(seat);
+
+                // Windshield
+                const windshieldGeometry = new THREE.BoxGeometry(1.4, 1.0, 0.1);
+                const windshieldMaterial = new THREE.MeshStandardMaterial({
+                    color: 0x87CEEB,
+                    transparent: true,
+                    opacity: 0.4
+                });
+                const windshield = new THREE.Mesh(windshieldGeometry, windshieldMaterial);
+                windshield.position.set(0, 1.8, -1.2);
+                windshield.rotation.x = -0.3;
+                vehicleGroup.add(windshield);
+
+                // Front ski
+                const skiGeometry = new THREE.BoxGeometry(0.4, 0.1, 2.0);
+                const skiMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+                const ski = new THREE.Mesh(skiGeometry, skiMaterial);
+                ski.position.set(0, 0.2, -1.5);
+                vehicleGroup.add(ski);
+
+                // Tracks (left and right)
+                const trackGeometry = new THREE.BoxGeometry(0.6, 0.8, 3.0);
+                const trackMaterial = new THREE.MeshStandardMaterial({ color: 0x111111 });
+
+                const leftTrack = new THREE.Mesh(trackGeometry, trackMaterial);
+                leftTrack.position.set(-0.8, 0.3, 0.5);
+                vehicleGroup.add(leftTrack);
+
+                const rightTrack = new THREE.Mesh(trackGeometry, trackMaterial);
+                rightTrack.position.set(0.8, 0.3, 0.5);
+                vehicleGroup.add(rightTrack);
+
+                // FLASHING LIGHTS (red and blue)
+                const lightGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+
+                const redLight = new THREE.Mesh(lightGeometry, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+                redLight.position.set(-0.5, 2.2, -1.0);
+                vehicleGroup.add(redLight);
+
+                const blueLight = new THREE.Mesh(lightGeometry, new THREE.MeshBasicMaterial({ color: 0x0000ff }));
+                blueLight.position.set(0.5, 2.2, -1.0);
+                vehicleGroup.add(blueLight);
+
+                // Store lights for animation
+                vehicleGroup.userData.lights = [redLight, blueLight];
+
+            } else {
+                // DETAILED SNOW CAT (GROOMER) MODEL
+
+                // Main cabin (yellow)
+                const cabinGeometry = new THREE.BoxGeometry(4.5, 3.0, 4.0);
+                const cabinMaterial = new THREE.MeshStandardMaterial({ color: 0xffdd00 });
+                const cabin = new THREE.Mesh(cabinGeometry, cabinMaterial);
+                cabin.position.y = 2.5;
+                vehicleGroup.add(cabin);
+
+                // Roof
+                const roofGeometry = new THREE.BoxGeometry(4.8, 0.3, 4.3);
+                const roofMaterial = new THREE.MeshStandardMaterial({ color: 0xff8800 });
+                const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+                roof.position.y = 4.2;
+                vehicleGroup.add(roof);
+
+                // Windows (blue tint)
+                const windowMaterial = new THREE.MeshStandardMaterial({
+                    color: 0x87CEEB,
+                    transparent: true,
+                    opacity: 0.5
+                });
+
+                const frontWindowGeometry = new THREE.BoxGeometry(4.2, 2.0, 0.2);
+                const frontWindow = new THREE.Mesh(frontWindowGeometry, windowMaterial);
+                frontWindow.position.set(0, 2.8, 2.1);
+                vehicleGroup.add(frontWindow);
+
+                // Large tracks (left and right)
+                const trackGeometry = new THREE.BoxGeometry(1.2, 1.5, 5.0);
+                const trackMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 });
+
+                const leftTrack = new THREE.Mesh(trackGeometry, trackMaterial);
+                leftTrack.position.set(-2.5, 0.8, 0);
+                vehicleGroup.add(leftTrack);
+
+                const rightTrack = new THREE.Mesh(trackGeometry, trackMaterial);
+                rightTrack.position.set(2.5, 0.8, 0);
+                vehicleGroup.add(rightTrack);
+
+                // Front blade/plow
+                const bladeGeometry = new THREE.BoxGeometry(5.5, 0.8, 0.3);
+                const bladeMaterial = new THREE.MeshStandardMaterial({ color: 0xcccccc });
+                const blade = new THREE.Mesh(bladeGeometry, bladeMaterial);
+                blade.position.set(0, 1.2, 2.5);
+                vehicleGroup.add(blade);
+
+                // ROTATING BEACON (orange)
+                const beaconGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.6, 8);
+                const beaconMaterial = new THREE.MeshBasicMaterial({ color: 0xff6600 });
+                const beacon = new THREE.Mesh(beaconGeometry, beaconMaterial);
+                beacon.position.set(0, 4.7, 0);
+                vehicleGroup.add(beacon);
+
+                // Store beacon for animation
+                vehicleGroup.userData.beacon = beacon;
+            }
+
+            // Spawn uphill from player (they come from above)
+            const spawnDistance = 80 + Math.random() * 60;
+            const spawnX = player.position.x + (Math.random() - 0.5) * 80;
+            const spawnZ = player.position.z + spawnDistance; // BEHIND/UPHILL
+            const spawnY = getTerrainHeight(spawnX, spawnZ) + 3;
+
+            vehicleGroup.position.set(spawnX, spawnY, spawnZ);
+            vehicleGroup.castShadow = true;
+            scene.add(vehicleGroup);
+
+            vehicles.push({
+                mesh: vehicleGroup,
+                type: type,
+                velocity: { x: 0, y: 0, z: 0 },
+                lightState: 0 // For alternating lights
+            });
+
+            showPatrolAlert(`${type === 'snowmobile' ? 'SNOWMOBILE' : 'SNOW CAT'} DEPLOYED!`);
+            console.log(`🚨 ${type} spawned!`);
+        }
+
+        // Update wanted level
+        function updateWantedLevel() {
+            for (let i = 1; i <= 5; i++) {
+                const star = document.getElementById(`star${i}`);
+                if (i <= wantedLevel) {
+                    star.classList.add('active');
+                } else {
+                    star.classList.remove('active');
+                }
+            }
+
+            // Spawn more patrol based on wanted level
+            if (wantedLevel >= 2 && Math.random() < 0.3) {
+                spawnPatroller();
+            }
+            if (wantedLevel >= 3 && Math.random() < 0.2) {
+                spawnPatroller();
+            }
+            if (wantedLevel >= 4 && vehicles.length < 2) {
+                spawnVehicle('snowmobile');
+            }
+            if (wantedLevel >= 5 && vehicles.length < 3) {
+                spawnVehicle('skicat');
+            }
+        }
+
+        // Show patrol alert
+        function showPatrolAlert(message) {
+            const alert = document.getElementById('patrolAlert');
+            alert.textContent = message;
+            alert.style.display = 'block';
+            setTimeout(() => {
+                alert.style.display = 'none';
+            }, 3000);
+        }
+
+        // Update player physics and controls
+        function updatePlayer(deltaTime) {
+            if (!gameActive) return;
+
+            // Ragdoll physics after crash
+            if (isRagdoll) {
+                playerVelocity.y += config.physics.gravity * deltaTime;
+                player.position.x += playerVelocity.x * deltaTime;
+                player.position.y += playerVelocity.y * deltaTime;
+                player.position.z += playerVelocity.z * deltaTime;
+
+                // Tumble
+                player.rotation.x += deltaTime * 5;
+                player.rotation.z += deltaTime * 3;
+
+                const terrainHeight = getTerrainHeight(player.position.x, player.position.z);
+                if (player.position.y < terrainHeight + 0.5) {
+                    player.position.y = terrainHeight + 0.5;
+                    playerVelocity.x *= 0.8;
+                    playerVelocity.z *= 0.8;
+                    playerVelocity.y *= -0.3;
+
+                    // Stop after losing momentum
+                    if (Math.abs(playerVelocity.x) < 1 && Math.abs(playerVelocity.z) < 1) {
+                        setTimeout(() => {
+                            arrestPlayer("Crashed and couldn't recover!");
+                        }, 1000);
+                    }
+                }
+
+                // Update camera to watch ragdoll
+                const camDistance = 20;
+                const camHeight = 10;
+                camera.position.x = player.position.x + camDistance;
+                camera.position.y = player.position.y + camHeight;
+                camera.position.z = player.position.z + camDistance;
+                camera.lookAt(player.position);
+                return;
+            }
+
+            const speed = Math.sqrt(
+                playerVelocity.x ** 2 +
+                playerVelocity.z ** 2
+            ) * 0.681818; // Convert ft/s to mph
+
+            // Get terrain normal for realistic skiing
+            const terrainHeight = getTerrainHeight(player.position.x, player.position.z);
+            const groundContact = Math.abs(player.position.y - terrainHeight) < 5; // More lenient
+
+            // Crash detection - too fast landing or hitting obstacles
+            if (!isAirborne && groundContact && Math.abs(playerVelocity.y) > 20) {
+                triggerRagdoll();
+                return;
+            }
+            if (speed > 60 && Math.random() < 0.001) {
+                // Random wipeout at high speeds
+                triggerRagdoll();
+                return;
+            }
+
+            if (groundContact) {
+                isAirborne = false;
+                player.position.y = terrainHeight + 1;
+                playerVelocity.y = 0; // Stop falling when on ground
+
+                // REALISTIC SKIING PHYSICS - based on actual skiing mechanics
+                const slopeVector = getTerrainSlope(player.position.x, player.position.z);
+
+                // Calculate slope steepness (0 = flat, 1 = very steep)
+                const slopeSteepness = Math.min(Math.sqrt(slopeVector.x ** 2 + slopeVector.z ** 2), 1.0);
+
+                // Gravity component down slope - accelerates you downhill
+                // INCREASED for faster, more thrilling skiing
+                const gravityDownSlope = 35 * slopeSteepness;
+
+                // Apply gravity in slope direction
+                if (slopeSteepness > 0.02) {
+                    const slopeDir = {
+                        x: slopeVector.x / slopeSteepness,
+                        z: slopeVector.z / slopeSteepness
+                    };
+
+                    // DOWNHILL ALIGNMENT BONUS - extra speed when pointing skis downhill
+                    const playerDir = {
+                        x: -Math.sin(playerRotation),
+                        z: -Math.cos(playerRotation)
+                    };
+                    // Calculate how aligned player is with downhill direction (-1 to 1)
+                    const alignment = playerDir.x * slopeDir.x + playerDir.z * slopeDir.z;
+                    // INCREASED bonus for more responsive downhill sliding (max +30 ft/s²)
+                    const alignmentBonus = Math.max(0, alignment) * 30;
+
+                    playerVelocity.x += slopeDir.x * (gravityDownSlope + alignmentBonus) * deltaTime;
+                    playerVelocity.z += slopeDir.z * (gravityDownSlope + alignmentBonus) * deltaTime;
+                }
+
+                // Friction - varies based on snow conditions and technique
+                let baseFriction = 0.990; // ULTRA low friction for faster sliding on fresh snow
+
+                // Braking (S key) - pizzaing/snowplow
+                if (keys['KeyS']) {
+                    baseFriction = 0.88; // High friction when braking
+                }
+
+                // Edge carving reduces friction
+                if (Math.abs(edgeAngle) > 0.2) {
+                    baseFriction += 0.005; // Carving = slightly more friction
+                }
+
+                // Apply friction
+                playerVelocity.x *= baseFriction;
+                playerVelocity.z *= baseFriction;
+
+                // Pushing/tucking (W key)
+                if (keys['KeyW']) {
+                    const currentSpeed = Math.sqrt(playerVelocity.x ** 2 + playerVelocity.z ** 2);
+                    if (currentSpeed < 150) { // INCREASED max tuck speed for faster sliding
+                        const pushDir = {
+                            x: -Math.sin(playerRotation),
+                            z: -Math.cos(playerRotation)
+                        };
+                        playerVelocity.x += pushDir.x * 15 * deltaTime; // More push force
+                        playerVelocity.z += pushDir.z * 15 * deltaTime;
+                    }
+                }
+
+                // Turning - speed affects turn responsiveness
+                const currentSpeed = Math.sqrt(playerVelocity.x ** 2 + playerVelocity.z ** 2);
+                let baseTurnRate = 2.5;
+
+                // Slower turning at high speeds (realistic!)
+                if (currentSpeed > 30) {
+                    baseTurnRate = 1.5;
+                }
+                if (currentSpeed > 50) {
+                    baseTurnRate = 0.8;
+                }
+
+                if (keys['KeyA']) {
+                    playerRotation += baseTurnRate * deltaTime;
+                }
+                if (keys['KeyD']) {
+                    playerRotation -= baseTurnRate * deltaTime;
+                }
+
+                // Edge control (Q/E) for carving
+                const edgeChangeRate = 4.0;
+                if (keys['KeyQ']) {
+                    edgeAngle = Math.min(edgeAngle + deltaTime * edgeChangeRate, 0.7);
+                } else if (keys['KeyE']) {
+                    edgeAngle = Math.max(edgeAngle - deltaTime * edgeChangeRate, -0.7);
+                } else {
+                    // Return to neutral when not pressing edge keys
+                    edgeAngle *= 0.88;
+                }
+
+                // CARVING MECHANICS - redirect momentum
+                if (Math.abs(edgeAngle) > 0.15) {
+                    // Carving creates a turn
+                    const carveTurnRate = edgeAngle * currentSpeed * 0.018;
+                    playerRotation += carveTurnRate * deltaTime;
+
+                    // Carving redirects velocity smoothly
+                    const velocityMag = Math.sqrt(playerVelocity.x ** 2 + playerVelocity.z ** 2);
+
+                    if (velocityMag > 1) {
+                        // Calculate new direction based on rotation
+                        const targetDir = {
+                            x: -Math.sin(playerRotation),
+                            z: -Math.cos(playerRotation)
+                        };
+
+                        // Blend current velocity toward turn direction
+                        const blendFactor = 0.08 * Math.abs(edgeAngle);
+                        playerVelocity.x = playerVelocity.x * (1 - blendFactor) + targetDir.x * velocityMag * blendFactor;
+                        playerVelocity.z = playerVelocity.z * (1 - blendFactor) + targetDir.z * velocityMag * blendFactor;
+                    }
+                }
+
+            } else {
+                // Airborne
+                isAirborne = true;
+                playerVelocity.y += config.physics.gravity * deltaTime;
+
+                // Air control
+                if (keys['KeyA']) {
+                    playerRotation += 1 * deltaTime;
+                }
+                if (keys['KeyD']) {
+                    playerRotation -= 1 * deltaTime;
+                }
+            }
+
+            // Jump
+            if (keys['Space'] && groundContact && !isAirborne) {
+                playerVelocity.y = 15; // Jump velocity
+                isAirborne = true;
+            }
+
+            // Eject skis (X key)
+            if (keys['KeyX'] && !skisEjected) {
+                ejectSkis();
+                keys['KeyX'] = false; // Prevent repeat
+            }
+
+            // Update position
+            player.position.x += playerVelocity.x * deltaTime;
+            player.position.y += playerVelocity.y * deltaTime;
+            player.position.z += playerVelocity.z * deltaTime;
+
+            // Update rotation
+            player.rotation.y = playerRotation;
+            player.rotation.z = edgeAngle;
+
+            // Update camera (third person) - farther back for bigger terrain
+            const camDistance = 30 + speed * 0.3; // Camera pulls back at high speed
+            const camHeight = 12 + speed * 0.1;
+            camera.position.x = player.position.x + Math.sin(playerRotation) * camDistance;
+            camera.position.y = player.position.y + camHeight;
+            camera.position.z = player.position.z + Math.cos(playerRotation) * camDistance;
+
+            // CRITICAL: Prevent camera from going through terrain on steep slopes
+            const cameraTerrainHeight = getTerrainHeight(camera.position.x, camera.position.z);
+            camera.position.y = Math.max(camera.position.y, cameraTerrainHeight + 5);
+
+            camera.lookAt(player.position);
+
+            // Update stats
+            document.getElementById('speed').textContent = `${speed.toFixed(1)} mph`;
+            document.getElementById('altitude').textContent = `${(config.bigSky.baseElevation + terrainHeight * 10).toFixed(0)} ft`;
+            document.getElementById('distance').textContent = `${totalDistance.toFixed(0)} ft`;
+
+            // Track distance
+            const distanceMoved = Math.sqrt(
+                playerVelocity.x ** 2 + playerVelocity.z ** 2
+            ) * deltaTime;
+            totalDistance += distanceMoved;
+
+            // SNOW SPRAY PARTICLES - create snow spray when skiing fast on ground
+            if (groundContact && !skisEjected && speed > 10) {
+                // Generate particles based on speed
+                const particleCount = Math.floor(speed / 15); // More particles at higher speeds
+                for (let i = 0; i < particleCount; i++) {
+                    createSnowParticle(player.position, playerVelocity, edgeAngle);
+                }
+            }
+
+            // Increase wanted level based on distance and evaded
+            if (totalDistance > 500 && wantedLevel < 2) {
+                wantedLevel = 2;
+                updateWantedLevel();
+                showPatrolAlert("Wanted level increased!");
+            }
+            if (evadedCount > 2 && wantedLevel < 3) {
+                wantedLevel = 3;
+                updateWantedLevel();
+                showPatrolAlert("Multiple patrol units responding!");
+            }
+            if (evadedCount > 5 && wantedLevel < 4) {
+                wantedLevel = 4;
+                updateWantedLevel();
+                showPatrolAlert("Snowmobiles deployed!");
+            }
+            if (evadedCount > 8 && wantedLevel < 5) {
+                wantedLevel = 5;
+                updateWantedLevel();
+                showPatrolAlert("Ski cats incoming!");
+            }
+        }
+
+        // Get terrain slope
+        function getTerrainSlope(x, z) {
+            const delta = 2;
+            const h1 = getTerrainHeight(x, z);
+            const h2 = getTerrainHeight(x, z - delta);
+            const h3 = getTerrainHeight(x + delta, z);
+
+            return {
+                x: (h3 - h1) / delta * 0.1,
+                z: (h2 - h1) / delta * 0.1
+            };
+        }
+
+        // Update patrollers AI
+        function updatePatrollers(deltaTime) {
+            patrollers.forEach((patroller, index) => {
+                if (patroller.crashed) return;
+
+                const dx = player.position.x - patroller.mesh.position.x;
+                const dz = player.position.z - patroller.mesh.position.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+
+                // Get player speed to match it
+                const playerSpeed = Math.sqrt(
+                    playerVelocity.x ** 2 + playerVelocity.z ** 2
+                );
+
+                const patrolSpeed = Math.sqrt(
+                    patroller.velocity.x ** 2 + patroller.velocity.z ** 2
+                );
+
+                // HUMANOID COLLISION PHYSICS - based on relative velocity and momentum
+                if (distance < 5) {
+                    // Calculate relative velocity
+                    const relVelX = playerVelocity.x - patroller.velocity.x;
+                    const relVelZ = playerVelocity.z - patroller.velocity.z;
+                    const relativeSpeed = Math.sqrt(relVelX ** 2 + relVelZ ** 2);
+
+                    // Calculate if player is moving toward patrol
+                    const toPatrolX = patroller.mesh.position.x - player.position.x;
+                    const toPatrolZ = patroller.mesh.position.z - player.position.z;
+                    const approaching = (relVelX * toPatrolX + relVelZ * toPatrolZ) > 0;
+
+                    if (approaching && relativeSpeed > 5) {
+                        // COLLISION! Determine who wins based on speed and momentum
+                        const playerMomentum = playerSpeed;
+                        const patrolMomentum = patrolSpeed;
+
+                        // If player is AIRBORNE during collision, they can jump over/evade
+                        if (isAirborne && playerVelocity.y > 5) {
+                            // Player successfully jumped over patrol!
+                            showPatrolAlert("Jumped over patrol!");
+                            patroller.crashed = true;
+                            patroller.mesh.rotation.x = Math.PI / 2;
+                            evadedCount++;
+                            document.getElementById('evaded').textContent = evadedCount;
+                            setTimeout(() => {
+                                scene.remove(patroller.mesh);
+                                patrollers.splice(index, 1);
+                            }, 3000);
+                            return;
+                        }
+
+                        if (playerMomentum > patrolMomentum * 1.3) {
+                            // Player PUSHES patrol and knocks them over!
+                            patroller.crashed = true;
+                            patroller.mesh.rotation.x = Math.PI / 2; // Fall over
+
+                            // Transfer some momentum to patrol (push them away)
+                            const pushDir = { x: toPatrolX / distance, z: toPatrolZ / distance };
+                            patroller.velocity.x = pushDir.x * playerSpeed * 0.5;
+                            patroller.velocity.z = pushDir.z * playerSpeed * 0.5;
+
+                            evadedCount++;
+                            document.getElementById('evaded').textContent = evadedCount;
+                            showPatrolAlert("Patrol knocked down!");
+
+                            // Player loses some speed from collision
+                            playerVelocity.x *= 0.8;
+                            playerVelocity.z *= 0.8;
+
+                            setTimeout(() => {
+                                scene.remove(patroller.mesh);
+                                patrollers.splice(index, 1);
+                            }, 3000);
+                            return;
+                        } else if (patrolMomentum > playerMomentum * 0.8) {
+                            // Patrol TACKLES player - eject skis!
+                            if (!skisEjected) {
+                                ejectSkis();
+                                showPatrolAlert("Skis ejected! Stop to be arrested!");
+                                playerVelocity.x *= 0.3;
+                                playerVelocity.z *= 0.3;
+                            } else {
+                                // Player already ejected - now can be arrested if slow enough
+                                if (playerSpeed < 5) {
+                                    arrestPlayer("Tackled by ski patrol!");
+                                }
+                            }
+                            return;
+                        } else {
+                            // Equal collision - both get knocked around
+                            // Player bounces off
+                            const bounceDir = { x: -toPatrolX / distance, z: -toPatrolZ / distance };
+                            playerVelocity.x = bounceDir.x * playerSpeed * 0.6;
+                            playerVelocity.z = bounceDir.z * playerSpeed * 0.6;
+
+                            // Patrol bounces back
+                            patroller.velocity.x *= -0.6;
+                            patroller.velocity.z *= -0.6;
+
+                            showPatrolAlert("Collision!");
+                        }
+                    }
+                }
+
+                if (wantedLevel <= 2) {
+                    // Ski in front and try to block - but faster
+                    patroller.state = 'blocking';
+                    const targetX = player.position.x + (Math.random() - 0.5) * 20;
+                    const targetZ = player.position.z - 50;
+
+                    const dirX = targetX - patroller.mesh.position.x;
+                    const dirZ = targetZ - patroller.mesh.position.z;
+                    const dist = Math.sqrt(dirX * dirX + dirZ * dirZ);
+
+                    if (dist > 1) {
+                        // Match player speed - 20% (slower than player)
+                        const speed = Math.max(25, playerSpeed * 0.8);
+                        patroller.velocity.x = (dirX / dist) * speed;
+                        patroller.velocity.z = (dirZ / dist) * speed;
+                    }
+                } else {
+                    // Chase player directly - at similar speed
+                    patroller.state = 'chasing';
+                    const dirX = dx / distance;
+                    const dirZ = dz / distance;
+
+                    // Match player speed - 10% (slightly slower)
+                    const speed = Math.max(30, playerSpeed * 0.9);
+                    patroller.velocity.x = dirX * speed;
+                    patroller.velocity.z = dirZ * speed;
+
+                    // Shoot tazers at level 3+
+                    if (wantedLevel >= 3 && distance < 50 && Math.random() < 0.01) {
+                        shootTazer(patroller);
+                    }
+                }
+
+                // PATROL COLLISION AVOIDANCE - prevent clustering
+                patrollers.forEach((otherPatroller, otherIndex) => {
+                    if (otherIndex === index || otherPatroller.crashed) return;
+
+                    const odx = patroller.mesh.position.x - otherPatroller.mesh.position.x;
+                    const odz = patroller.mesh.position.z - otherPatroller.mesh.position.z;
+                    const oDist = Math.sqrt(odx * odx + odz * odz);
+
+                    // If too close to another patrol, push away
+                    if (oDist < 8 && oDist > 0.1) {
+                        const avoidanceStrength = 10;
+                        const pushX = (odx / oDist) * avoidanceStrength;
+                        const pushZ = (odz / oDist) * avoidanceStrength;
+
+                        patroller.velocity.x += pushX * deltaTime;
+                        patroller.velocity.z += pushZ * deltaTime;
+                    }
+                });
+
+                // Update position
+                const terrainY = getTerrainHeight(
+                    patroller.mesh.position.x,
+                    patroller.mesh.position.z
+                );
+
+                patroller.mesh.position.x += patroller.velocity.x * deltaTime;
+                patroller.mesh.position.z += patroller.velocity.z * deltaTime;
+                patroller.mesh.position.y = terrainY + 2;
+
+                // Face movement direction
+                patroller.mesh.rotation.y = Math.atan2(patroller.velocity.x, patroller.velocity.z);
+
+                // Spawn new patrollers more frequently
+                if (patrollers.length < wantedLevel * 3 && Math.random() < 0.01) {
+                    spawnPatroller();
+                }
+            });
+        }
+
+        // Shoot tazer
+        function shootTazer(patroller) {
+            const tazerGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+            const tazerMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+            const tazer = new THREE.Mesh(tazerGeometry, tazerMaterial);
+
+            tazer.position.copy(patroller.mesh.position);
+            scene.add(tazer);
+
+            // Shoot towards player
+            const dx = player.position.x - tazer.position.x;
+            const dz = player.position.z - tazer.position.z;
+            const distance = Math.sqrt(dx * dx + dz * dz);
+
+            const velocity = {
+                x: (dx / distance) * 50,
+                y: 5,
+                z: (dz / distance) * 50
+            };
+
+            // Animate tazer
+            const tazerInterval = setInterval(() => {
+                velocity.y -= 1;
+                tazer.position.x += velocity.x * 0.016;
+                tazer.position.y += velocity.y * 0.016;
+                tazer.position.z += velocity.z * 0.016;
+
+                // Check hit
+                const hitDist = Math.sqrt(
+                    (tazer.position.x - player.position.x) ** 2 +
+                    (tazer.position.y - player.position.y) ** 2 +
+                    (tazer.position.z - player.position.z) ** 2
+                );
+
+                if (hitDist < 2) {
+                    clearInterval(tazerInterval);
+                    scene.remove(tazer);
+                    arrestPlayer("Hit by tazer!");
+                } else if (tazer.position.y < 0) {
+                    clearInterval(tazerInterval);
+                    scene.remove(tazer);
+                }
+            }, 16);
+        }
+
+        // Update vehicles
+        function updateVehicles(deltaTime) {
+            vehicles.forEach((vehicle, index) => {
+                const dx = player.position.x - vehicle.mesh.position.x;
+                const dz = player.position.z - vehicle.mesh.position.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+
+                if (distance < 5) {
+                    arrestPlayer(`Rammed by ${vehicle.type}!`);
+                    return;
+                }
+
+                // Chase player at moderate speed
+                const speed = vehicle.type === 'skicat' ? 25 : 35; // Slower vehicles for easier gameplay
+                const dirX = dx / distance;
+                const dirZ = dz / distance;
+
+                vehicle.velocity.x = dirX * speed;
+                vehicle.velocity.z = dirZ * speed;
+
+                // Update position
+                const terrainY = getTerrainHeight(
+                    vehicle.mesh.position.x,
+                    vehicle.mesh.position.z
+                );
+
+                vehicle.mesh.position.x += vehicle.velocity.x * deltaTime;
+                vehicle.mesh.position.z += vehicle.velocity.z * deltaTime;
+                vehicle.mesh.position.y = terrainY + 3;
+
+                // Face movement direction
+                vehicle.mesh.rotation.y = Math.atan2(vehicle.velocity.x, vehicle.velocity.z);
+
+                // ANIMATE LIGHTS AND BEACONS
+                vehicle.lightState += deltaTime * 4; // Animation speed
+
+                if (vehicle.type === 'snowmobile' && vehicle.mesh.userData.lights) {
+                    // Alternating red and blue lights
+                    const flashOn = Math.floor(vehicle.lightState) % 2 === 0;
+                    vehicle.mesh.userData.lights[0].material.emissive = new THREE.Color(flashOn ? 0xff0000 : 0x330000);
+                    vehicle.mesh.userData.lights[1].material.emissive = new THREE.Color(flashOn ? 0x000033 : 0x0000ff);
+                    vehicle.mesh.userData.lights[0].scale.setScalar(flashOn ? 1.3 : 1.0);
+                    vehicle.mesh.userData.lights[1].scale.setScalar(flashOn ? 1.0 : 1.3);
+                } else if (vehicle.type === 'skicat' && vehicle.mesh.userData.beacon) {
+                    // Rotating orange beacon
+                    vehicle.mesh.userData.beacon.rotation.y += deltaTime * 10;
+                    const pulseScale = 1.0 + Math.sin(vehicle.lightState * 5) * 0.2;
+                    vehicle.mesh.userData.beacon.scale.setScalar(pulseScale);
+                }
+            });
+        }
+
+        // Trigger ragdoll physics
+        function triggerRagdoll() {
+            if (isRagdoll) return;
+            isRagdoll = true;
+            showPatrolAlert("CRASH! Try to recover...");
+
+            // Add some random tumble velocity
+            playerVelocity.y = 10;
+            playerVelocity.x *= 0.5;
+            playerVelocity.z *= 0.5;
+        }
+
+        // Arrest player (game over)
+        function arrestPlayer(message) {
+            if (!skisEjected) {
+                // Can't be arrested while still on skis!
+                return;
+            }
+
+            gameActive = false;
+
+            // Show handcuff animation
+            const arrestMsg = message + " - HANDCUFFED!";
+            document.getElementById('arrestMessage').textContent = arrestMsg;
+            document.getElementById('finalEvaded').textContent = evadedCount;
+            document.getElementById('finalDistance').textContent = totalDistance.toFixed(0);
+            document.getElementById('gameOver').style.display = 'block';
+
+            // Animate player being handcuffed (arms behind back)
+            player.children.forEach(child => {
+                if (child.geometry && child.geometry.type === 'CylinderGeometry') {
+                    // Rotate arms behind back
+                    child.rotation.x = Math.PI / 4;
+                }
+            });
+        }
+
+        // Eject from skis
+        function ejectSkis() {
+            if (skisEjected) return;
+
+            skisEjected = true;
+            showPatrolAlert("Skis ejected! You're vulnerable!");
+
+            // Find and remove ski meshes from player
+            const skisToRemove = [];
+            player.children.forEach((child, index) => {
+                // Remove skis, boots, and poles
+                if (child.position.y < -0.5 || // Skis and boots are low
+                    child.geometry.parameters?.radiusTop === 0.03) { // Poles are thin
+                    skisToRemove.push(child);
+                }
+            });
+
+            // Create flying ski objects
+            skisToRemove.forEach(ski => {
+                const flyingSki = ski.clone();
+                flyingSki.position.copy(player.position);
+                flyingSki.position.y += ski.position.y;
+                scene.add(flyingSki);
+
+                // Eject skis away from player
+                const ejectVel = {
+                    x: (Math.random() - 0.5) * 20,
+                    y: 10 + Math.random() * 10,
+                    z: (Math.random() - 0.5) * 20
+                };
+
+                // Animate falling ski
+                let skiY = flyingSki.position.y;
+                const skiInterval = setInterval(() => {
+                    ejectVel.y -= 2;
+                    flyingSki.position.x += ejectVel.x * 0.016;
+                    flyingSki.position.y += ejectVel.y * 0.016;
+                    flyingSki.position.z += ejectVel.z * 0.016;
+                    flyingSki.rotation.x += 0.1;
+                    flyingSki.rotation.z += 0.15;
+
+                    const terrainH = getTerrainHeight(flyingSki.position.x, flyingSki.position.z);
+                    if (flyingSki.position.y < terrainH) {
+                        flyingSki.position.y = terrainH;
+                        clearInterval(skiInterval);
+                        // Remove after a while
+                        setTimeout(() => scene.remove(flyingSki), 5000);
+                    }
+                }, 16);
+
+                player.remove(ski);
+            });
+
+            console.log('🎿 Skis ejected!');
+        }
+
+        // Mouse movement
+        function onMouseMove(event) {
+            mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+            mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+        }
+
+        // Restart game
+        function restartGame() {
+            location.reload();
+        }
+
+        // Throw bomb
+        function throwBomb(event) {
+            if (!gameActive) return;
+            if (event.target.id === 'restartBtn') return; // Don't throw bombs when clicking restart
+
+            // Raycast to find where the player clicked on the terrain
+            const mouse = new THREE.Vector2();
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, camera);
+
+            // Find intersection with terrain
+            const intersects = raycaster.intersectObject(terrain, true);
+
+            if (intersects.length === 0) {
+                console.log('No terrain hit - click on the terrain to target bombs!');
+                return; // No terrain hit
+            }
+
+            const targetPoint = intersects[0].point;
+
+            // Create bomb visual
+            const bombGeometry = new THREE.SphereGeometry(0.3, 16, 16);
+            const bombMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 }); // Black bomb
+            const bombMesh = new THREE.Mesh(bombGeometry, bombMaterial);
+
+            // Fuse (small orange cylinder)
+            const fuseGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.2, 6);
+            const fuseMaterial = new THREE.MeshStandardMaterial({ color: 0xff6600 });
+            const fuse = new THREE.Mesh(fuseGeometry, fuseMaterial);
+            fuse.position.y = 0.35;
+
+            const bombGroup = new THREE.Group();
+            bombGroup.add(bombMesh);
+            bombGroup.add(fuse);
+
+            // Start at player position
+            bombGroup.position.copy(player.position);
+            bombGroup.position.y += 2;
+            scene.add(bombGroup);
+
+            // Calculate ballistic trajectory to hit target point
+            const dx = targetPoint.x - player.position.x;
+            const dy = targetPoint.y - (player.position.y + 2);
+            const dz = targetPoint.z - player.position.z;
+            const horizontalDist = Math.sqrt(dx * dx + dz * dz);
+
+            // Physics: calculate velocity needed to hit target
+            // Using trajectory equations for projectile motion
+            const gravity = Math.abs(config.physics.gravity);
+            const flightTime = 2.0; // Aim for 2 second flight time
+
+            const velocity = {
+                x: dx / flightTime,
+                y: (dy / flightTime) + (0.5 * gravity * flightTime), // Account for gravity
+                z: dz / flightTime
+            };
+
+            bombs.push({
+                mesh: bombGroup,
+                velocity: velocity,
+                lifetime: 3.5 // Explode after 3.5 seconds (or on impact)
+            });
+
+            // Increase wanted level for throwing bombs!
+            if (wantedLevel < 5) {
+                wantedLevel++;
+                updateWantedLevel();
+                showPatrolAlert("Throwing explosives! Wanted level increased!");
+            }
+
+            console.log(`💣 Bomb thrown at target (${targetPoint.x.toFixed(1)}, ${targetPoint.y.toFixed(1)}, ${targetPoint.z.toFixed(1)})!`);
+        }
+
+        // Create snow particle
+        function createSnowParticle(position, velocity, edgeAngle) {
+            // Create small white particle
+            const particleGeometry = new THREE.SphereGeometry(0.15, 4, 4);
+            const particleMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.8
+            });
+            const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+
+            // Position behind player (where skis kick up snow)
+            const behindOffset = Math.random() * 2 - 1;
+            particle.position.set(
+                position.x + behindOffset,
+                position.y - 0.5,
+                position.z + behindOffset
+            );
+
+            scene.add(particle);
+
+            // Particle physics - spray outward and upward
+            const spreadAngle = edgeAngle * 5 + (Math.random() - 0.5) * 2;
+            const particleVel = {
+                x: -velocity.x * 0.3 + Math.sin(spreadAngle) * 5,
+                y: 3 + Math.random() * 5, // Spray upward
+                z: -velocity.z * 0.3 + Math.cos(spreadAngle) * 5
+            };
+
+            snowParticles.push({
+                mesh: particle,
+                velocity: particleVel,
+                lifetime: 0.5 + Math.random() * 0.5 // Short lifetime
+            });
+        }
+
+        // Update snow particles
+        function updateSnowParticles(deltaTime) {
+            snowParticles.forEach((particle, index) => {
+                // Apply gravity
+                particle.velocity.y -= 15 * deltaTime;
+
+                // Update position
+                particle.mesh.position.x += particle.velocity.x * deltaTime;
+                particle.mesh.position.y += particle.velocity.y * deltaTime;
+                particle.mesh.position.z += particle.velocity.z * deltaTime;
+
+                // Fade out over lifetime
+                particle.lifetime -= deltaTime;
+                particle.mesh.material.opacity = particle.lifetime / 1.0;
+
+                // Remove dead particles
+                if (particle.lifetime <= 0 || particle.mesh.position.y < getTerrainHeight(particle.mesh.position.x, particle.mesh.position.z)) {
+                    scene.remove(particle.mesh);
+                    snowParticles.splice(index, 1);
+                }
+            });
+        }
+
+        // Update bombs
+        function updateBombs(deltaTime) {
+            bombs.forEach((bomb, index) => {
+                // Apply gravity
+                bomb.velocity.y += config.physics.gravity * deltaTime;
+
+                // Update position
+                bomb.mesh.position.x += bomb.velocity.x * deltaTime;
+                bomb.mesh.position.y += bomb.velocity.y * deltaTime;
+                bomb.mesh.position.z += bomb.velocity.z * deltaTime;
+
+                // Rotate bomb for effect
+                bomb.mesh.rotation.x += deltaTime * 5;
+                bomb.mesh.rotation.z += deltaTime * 3;
+
+                // Check terrain collision
+                const terrainHeight = getTerrainHeight(bomb.mesh.position.x, bomb.mesh.position.z);
+                if (bomb.mesh.position.y < terrainHeight) {
+                    // Explode on impact
+                    explodeBomb(bomb, index);
+                    return;
+                }
+
+                // Countdown timer
+                bomb.lifetime -= deltaTime;
+                if (bomb.lifetime <= 0) {
+                    // Explode after time runs out
+                    explodeBomb(bomb, index);
+                }
+            });
+        }
+
+        // Explode bomb
+        function explodeBomb(bomb, bombIndex) {
+            const explosionRadius = 15;
+
+            // Create explosion visual (expanding orange sphere)
+            const explosionGeometry = new THREE.SphereGeometry(1, 16, 16);
+            const explosionMaterial = new THREE.MeshBasicMaterial({
+                color: 0xff6600,
+                transparent: true,
+                opacity: 0.8
+            });
+            const explosion = new THREE.Mesh(explosionGeometry, explosionMaterial);
+            explosion.position.copy(bomb.mesh.position);
+            scene.add(explosion);
+
+            // Create explosion debris particles
+            const debrisCount = 20;
+            for (let i = 0; i < debrisCount; i++) {
+                const debrisGeometry = new THREE.SphereGeometry(0.2 + Math.random() * 0.3, 4, 4);
+                const debrisMaterial = new THREE.MeshBasicMaterial({
+                    color: Math.random() > 0.5 ? 0xff6600 : 0x333333,
+                    transparent: true,
+                    opacity: 1.0
+                });
+                const debris = new THREE.Mesh(debrisGeometry, debrisMaterial);
+                debris.position.copy(bomb.mesh.position);
+                scene.add(debris);
+
+                // Random explosion direction
+                const angle = Math.random() * Math.PI * 2;
+                const elevation = (Math.random() - 0.5) * Math.PI * 0.5;
+                const speed = 20 + Math.random() * 30;
+
+                const debrisVel = {
+                    x: Math.cos(angle) * Math.cos(elevation) * speed,
+                    y: Math.sin(elevation) * speed + 15,
+                    z: Math.sin(angle) * Math.cos(elevation) * speed
+                };
+
+                // Animate debris
+                let debrisLifetime = 1.0;
+                const debrisInterval = setInterval(() => {
+                    debrisVel.y -= 30 * 0.016; // Gravity
+                    debris.position.x += debrisVel.x * 0.016;
+                    debris.position.y += debrisVel.y * 0.016;
+                    debris.position.z += debrisVel.z * 0.016;
+
+                    debris.rotation.x += 0.2;
+                    debris.rotation.z += 0.15;
+
+                    debrisLifetime -= 0.016;
+                    debris.material.opacity = Math.max(0, debrisLifetime);
+
+                    if (debrisLifetime <= 0) {
+                        clearInterval(debrisInterval);
+                        scene.remove(debris);
+                    }
+                }, 16);
+            }
+
+            // Animate explosion
+            let explosionScale = 0;
+            const explosionInterval = setInterval(() => {
+                explosionScale += 1;
+                explosion.scale.set(explosionScale, explosionScale, explosionScale);
+                explosion.material.opacity -= 0.1;
+
+                if (explosion.material.opacity <= 0) {
+                    clearInterval(explosionInterval);
+                    scene.remove(explosion);
+                }
+            }, 30);
+
+            // Check for patrol hits
+            patrollers.forEach((patroller, patrolIndex) => {
+                if (patroller.crashed) return;
+
+                const dx = patroller.mesh.position.x - bomb.mesh.position.x;
+                const dz = patroller.mesh.position.z - bomb.mesh.position.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+
+                if (distance < explosionRadius) {
+                    // Patrol hit by explosion!
+                    patroller.crashed = true;
+                    patroller.mesh.rotation.x = Math.PI / 2;
+                    evadedCount++;
+                    document.getElementById('evaded').textContent = evadedCount;
+
+                    setTimeout(() => {
+                        scene.remove(patroller.mesh);
+                        patrollers.splice(patrolIndex, 1);
+                    }, 2000);
+                }
+            });
+
+            // Check for vehicle hits
+            vehicles.forEach((vehicle, vehicleIndex) => {
+                const dx = vehicle.mesh.position.x - bomb.mesh.position.x;
+                const dz = vehicle.mesh.position.z - bomb.mesh.position.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+
+                if (distance < explosionRadius) {
+                    // Vehicle destroyed by explosion!
+                    vehicle.mesh.rotation.x = Math.PI / 2; // Flip over
+                    evadedCount += 2; // Vehicles worth more points!
+                    document.getElementById('evaded').textContent = evadedCount;
+
+                    showPatrolAlert(`${vehicle.type === 'snowmobile' ? 'SNOWMOBILE' : 'SNOW CAT'} DESTROYED!`);
+
+                    setTimeout(() => {
+                        scene.remove(vehicle.mesh);
+                        vehicles.splice(vehicleIndex, 1);
+                    }, 3000);
+                }
+            });
+
+            // Remove bomb
+            scene.remove(bomb.mesh);
+            bombs.splice(bombIndex, 1);
+
+            showPatrolAlert("BOOM! 💣");
+        }
+
+        // Main animation loop
+        let lastTime = performance.now();
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const currentTime = performance.now();
+            const deltaTime = (currentTime - lastTime) / 1000;
+            lastTime = currentTime;
+
+            if (gameActive) {
+                // Update physics
+                world.step(1 / 60, deltaTime, 3);
+
+                // Update game objects
+                updatePlayer(deltaTime);
+                updatePatrollers(deltaTime);
+                updateVehicles(deltaTime);
+                updateBombs(deltaTime);
+                updateSnowParticles(deltaTime);
+            }
+
+            // Render
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Start the game
+        init();
+    </script>
+</body>
+</html>
