@@ -306,7 +306,8 @@
                 size: 4096,  // Bigger terrain - 4km x 4km (still 2x original)
                 segments: 64, // Keep segments low for performance
                 heightScale: 5.0, // More vertical exaggeration for dramatic slopes
-                tileZoom: 19 // MAXIMUM zoom for ultra high-res satellite imagery
+                elevationZoom: 15, // Terrarium tiles max zoom (real elevation data)
+                satelliteZoom: 19 // MAXIMUM zoom for ultra high-res satellite imagery
             },
             physics: {
                 gravity: -32.2, // ft/s² (adjusted for feet)
@@ -422,12 +423,22 @@
         // Load terrain from Terrarium tiles
         async function loadTerrain() {
             const { lat, lon } = config.bigSky;
-            const zoom = config.terrain.tileZoom;
+            const elevationZoom = config.terrain.elevationZoom;
+            const satelliteZoom = config.terrain.satelliteZoom;
 
-            // Convert lat/lon to tile coordinates
-            const n = Math.pow(2, zoom);
-            const xtile = Math.floor((lon + 180) / 360 * n);
-            const ytile = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n);
+            // Convert lat/lon to tile coordinates for elevation data
+            const nElev = Math.pow(2, elevationZoom);
+            const xtileElev = Math.floor((lon + 180) / 360 * nElev);
+            const ytileElev = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * nElev);
+
+            // Convert lat/lon to tile coordinates for satellite imagery
+            const nSat = Math.pow(2, satelliteZoom);
+            const xtileSat = Math.floor((lon + 180) / 360 * nSat);
+            const ytileSat = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * nSat);
+
+            console.log(`📍 Big Sky coordinates: ${lat}, ${lon}`);
+            console.log(`🗺️ Elevation tile (zoom ${elevationZoom}): ${xtileElev}, ${ytileElev}`);
+            console.log(`🛰️ Satellite tile (zoom ${satelliteZoom}): ${xtileSat}, ${ytileSat}`);
 
             // Create terrain geometry
             const geometry = new THREE.PlaneGeometry(
@@ -438,7 +449,7 @@
             );
 
             // Load height data from Terrarium tiles
-            const heightData = await loadHeightData(xtile, ytile, zoom);
+            const heightData = await loadHeightData(xtileElev, ytileElev, elevationZoom);
 
             // Apply height data to terrain BEFORE rotation
             const vertices = geometry.attributes.position.array;
@@ -457,6 +468,29 @@
             }
 
             geometry.attributes.position.needsUpdate = true;
+
+            // Find peak location from real terrain data
+            let maxHeight = -Infinity;
+            let peakI = 0, peakJ = 0;
+            for (let i = 0; i < segments; i++) {
+                for (let j = 0; j < segments; j++) {
+                    const heightIdx = i * segments + j;
+                    const scaledHeight = heightData[heightIdx] * config.terrain.heightScale;
+                    if (scaledHeight > maxHeight) {
+                        maxHeight = scaledHeight;
+                        peakI = i;
+                        peakJ = j;
+                    }
+                }
+            }
+
+            // Calculate world position of peak (before rotation)
+            const terrainWidth = config.terrain.size;
+            peakLocation.x = (peakJ / (segments - 1) - 0.5) * terrainWidth;
+            peakLocation.z = (peakI / (segments - 1) - 0.5) * terrainWidth;
+            peakLocation.height = maxHeight;
+
+            console.log(`⛰️ Peak found at grid (${peakI}, ${peakJ}) -> world position (${peakLocation.x.toFixed(1)}, ${peakLocation.height.toFixed(1)}, ${peakLocation.z.toFixed(1)})`);
 
             // NOW rotate to make it horizontal (XZ plane with Y as height)
             geometry.rotateX(-Math.PI / 2);
@@ -482,11 +516,16 @@
             const textureLoader = new THREE.TextureLoader();
             textureLoader.crossOrigin = 'anonymous';
 
-            console.log(`🛰️ Loading satellite imagery at zoom ${zoom}...`);
+            console.log(`🛰️ Loading satellite imagery at zoom ${satelliteZoom}...`);
 
             // Try to load satellite texture - use lower zoom if high zoom fails
             const tryLoadTexture = (attemptZoom) => {
-                const url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${attemptZoom}/${ytile}/${xtile}`;
+                // Recalculate tile coordinates for the attempt zoom level
+                const n = Math.pow(2, attemptZoom);
+                const xt = Math.floor((lon + 180) / 360 * n);
+                const yt = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n);
+
+                const url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${attemptZoom}/${yt}/${xt}`;
                 console.log(`Attempting to load: ${url}`);
 
                 textureLoader.load(
@@ -517,7 +556,7 @@
             };
 
             // Start loading at requested zoom level
-            tryLoadTexture(zoom);
+            tryLoadTexture(satelliteZoom);
 
             terrain = new THREE.Mesh(geometry, material);
             scene.add(terrain);
@@ -533,65 +572,85 @@
             addTreesAndObstacles();
         }
 
-        // Load height data - Big Sky Lone Mountain profile
-        async function loadHeightData(centerX, centerY, zoom) {
+        // Load height data from Terrarium RGB tiles
+        async function loadHeightData(xtile, ytile, zoom) {
             const segments = config.terrain.segments;
             const heightData = new Array(segments * segments).fill(0);
 
-            console.log('🏔️ Generating Lone Mountain terrain...');
+            console.log(`🏔️ Loading real Terrarium elevation data for Big Sky (tile ${xtile},${ytile} @ zoom ${zoom})...`);
 
-            // Lone Mountain actual stats:
-            // Peak: 11,166 ft
-            // Base: 7,500 ft
-            // Vertical drop: 3,666 ft
-            // We'll simulate this profile
+            return new Promise((resolve, reject) => {
+                // Load Terrarium tile as image
+                const terrariumUrl = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${zoom}/${xtile}/${ytile}.png`;
+                console.log(`📥 Fetching Terrarium tile: ${terrariumUrl}`);
 
-            const peakHeight = 300; // Scaled height for peak (bigger terrain = taller peaks)
-            const baseHeight = 0;
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
 
-            for (let i = 0; i < segments; i++) {
-                for (let j = 0; j < segments; j++) {
-                    const x = (j / segments - 0.5) * 2;
-                    const z = (i / segments - 0.5) * 2;
+                img.onload = () => {
+                    console.log(`✅ Terrarium tile loaded! Image size: ${img.width}x${img.height}`);
 
-                    // Distance from center (peak)
-                    const distFromPeak = Math.sqrt(x * x + z * z);
+                    // Create canvas to extract pixel data
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0);
 
-                    // Create Lone Mountain's distinctive peak shape
-                    // Sharp peak at top (north), gradual descent
-                    let height = peakHeight * Math.exp(-distFromPeak * 0.8);
+                    // Get pixel data
+                    const imageData = ctx.getImageData(0, 0, img.width, img.height);
+                    const pixels = imageData.data;
 
-                    // Add ridgelines - Lone Mountain has distinct ridges
-                    height += Math.sin(Math.atan2(z, x) * 3) * 8 * (1 - distFromPeak);
+                    console.log(`📊 Processing ${pixels.length / 4} elevation pixels...`);
 
-                    // Main slope gradient (north to south)
-                    const slopeGradient = (0.7 - i / segments) * 80;
-                    height += slopeGradient;
+                    // Sample the Terrarium tile to fill our terrain grid
+                    let minElev = Infinity;
+                    let maxElev = -Infinity;
 
-                    // Add bowl features (Big Sky has several bowls)
-                    const bowlX = x - 0.3;
-                    const bowlZ = z + 0.2;
-                    const bowlDist = Math.sqrt(bowlX * bowlX + bowlZ * bowlZ);
-                    if (bowlDist < 0.4) {
-                        height -= (0.4 - bowlDist) * 15; // Create bowl depression
+                    for (let i = 0; i < segments; i++) {
+                        for (let j = 0; j < segments; j++) {
+                            // Map terrain segment to pixel in Terrarium tile
+                            const pixelX = Math.floor((j / segments) * img.width);
+                            const pixelY = Math.floor((i / segments) * img.height);
+                            const pixelIndex = (pixelY * img.width + pixelX) * 4;
+
+                            // Extract RGB values
+                            const r = pixels[pixelIndex];
+                            const g = pixels[pixelIndex + 1];
+                            const b = pixels[pixelIndex + 2];
+
+                            // Decode Terrarium format: elevation = (R * 256 + G + B / 256) - 32768
+                            const elevationMeters = (r * 256 + g + b / 256) - 32768;
+
+                            // Convert meters to feet for consistency with game units
+                            const elevationFeet = elevationMeters * 3.28084;
+
+                            // Store normalized height (relative to base)
+                            const relativeHeight = elevationFeet - config.bigSky.baseElevation;
+                            heightData[i * segments + j] = relativeHeight;
+
+                            minElev = Math.min(minElev, elevationFeet);
+                            maxElev = Math.max(maxElev, elevationFeet);
+                        }
                     }
 
-                    // Add moguls and terrain variation
-                    height += Math.sin(x * 15) * Math.cos(z * 15) * 1.5;
-                    height += Math.sin(x * 8 + z * 8) * 2;
+                    console.log(`✅ Real Big Sky terrain loaded!`);
+                    console.log(`   Elevation range: ${minElev.toFixed(0)} - ${maxElev.toFixed(0)} ft`);
+                    console.log(`   Vertical drop: ${(maxElev - minElev).toFixed(0)} ft`);
+                    console.log(`   Peak elevation matches: ${maxElev.toFixed(0)} ft (actual: ${config.bigSky.peakElevation} ft)`);
 
-                    // Natural terrain noise
-                    height += (Math.random() - 0.5) * 3;
+                    resolve(heightData);
+                };
 
-                    // Ensure no negative heights
-                    height = Math.max(baseHeight, height);
+                img.onerror = (err) => {
+                    console.error('❌ Failed to load Terrarium tile:', err);
+                    console.warn('⚠️ Falling back to flat terrain');
+                    // Return flat terrain as fallback
+                    resolve(heightData.fill(0));
+                };
 
-                    heightData[i * segments + j] = height;
-                }
-            }
-
-            console.log('✅ Lone Mountain terrain generated with peak, ridges, and bowls');
-            return heightData;
+                img.src = terrariumUrl;
+            });
         }
 
         // Store peak location globally to avoid recalculating
