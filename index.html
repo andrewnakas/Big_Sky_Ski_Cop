@@ -1071,23 +1071,131 @@
             const vehicleGroup = new THREE.Group();
 
             if (type === 'snowmobile') {
-                // Simple snowmobile
-                const bodyGeometry = new THREE.BoxGeometry(1.5, 1, 3);
+                // DETAILED SNOWMOBILE MODEL
+
+                // Main body (red patrol snowmobile)
+                const bodyGeometry = new THREE.BoxGeometry(1.8, 1.2, 3.5);
                 const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
                 const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+                body.position.y = 0.8;
                 vehicleGroup.add(body);
+
+                // Seat
+                const seatGeometry = new THREE.BoxGeometry(1.5, 0.6, 1.2);
+                const seatMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 });
+                const seat = new THREE.Mesh(seatGeometry, seatMaterial);
+                seat.position.set(0, 1.5, 0.3);
+                vehicleGroup.add(seat);
+
+                // Windshield
+                const windshieldGeometry = new THREE.BoxGeometry(1.4, 1.0, 0.1);
+                const windshieldMaterial = new THREE.MeshStandardMaterial({
+                    color: 0x87CEEB,
+                    transparent: true,
+                    opacity: 0.4
+                });
+                const windshield = new THREE.Mesh(windshieldGeometry, windshieldMaterial);
+                windshield.position.set(0, 1.8, -1.2);
+                windshield.rotation.x = -0.3;
+                vehicleGroup.add(windshield);
+
+                // Front ski
+                const skiGeometry = new THREE.BoxGeometry(0.4, 0.1, 2.0);
+                const skiMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+                const ski = new THREE.Mesh(skiGeometry, skiMaterial);
+                ski.position.set(0, 0.2, -1.5);
+                vehicleGroup.add(ski);
+
+                // Tracks (left and right)
+                const trackGeometry = new THREE.BoxGeometry(0.6, 0.8, 3.0);
+                const trackMaterial = new THREE.MeshStandardMaterial({ color: 0x111111 });
+
+                const leftTrack = new THREE.Mesh(trackGeometry, trackMaterial);
+                leftTrack.position.set(-0.8, 0.3, 0.5);
+                vehicleGroup.add(leftTrack);
+
+                const rightTrack = new THREE.Mesh(trackGeometry, trackMaterial);
+                rightTrack.position.set(0.8, 0.3, 0.5);
+                vehicleGroup.add(rightTrack);
+
+                // FLASHING LIGHTS (red and blue)
+                const lightGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+
+                const redLight = new THREE.Mesh(lightGeometry, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+                redLight.position.set(-0.5, 2.2, -1.0);
+                vehicleGroup.add(redLight);
+
+                const blueLight = new THREE.Mesh(lightGeometry, new THREE.MeshBasicMaterial({ color: 0x0000ff }));
+                blueLight.position.set(0.5, 2.2, -1.0);
+                vehicleGroup.add(blueLight);
+
+                // Store lights for animation
+                vehicleGroup.userData.lights = [redLight, blueLight];
+
             } else {
-                // Ski cat (groomer)
-                const bodyGeometry = new THREE.BoxGeometry(4, 2, 5);
-                const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xffff00 });
-                const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-                vehicleGroup.add(body);
+                // DETAILED SNOW CAT (GROOMER) MODEL
+
+                // Main cabin (yellow)
+                const cabinGeometry = new THREE.BoxGeometry(4.5, 3.0, 4.0);
+                const cabinMaterial = new THREE.MeshStandardMaterial({ color: 0xffdd00 });
+                const cabin = new THREE.Mesh(cabinGeometry, cabinMaterial);
+                cabin.position.y = 2.5;
+                vehicleGroup.add(cabin);
+
+                // Roof
+                const roofGeometry = new THREE.BoxGeometry(4.8, 0.3, 4.3);
+                const roofMaterial = new THREE.MeshStandardMaterial({ color: 0xff8800 });
+                const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+                roof.position.y = 4.2;
+                vehicleGroup.add(roof);
+
+                // Windows (blue tint)
+                const windowMaterial = new THREE.MeshStandardMaterial({
+                    color: 0x87CEEB,
+                    transparent: true,
+                    opacity: 0.5
+                });
+
+                const frontWindowGeometry = new THREE.BoxGeometry(4.2, 2.0, 0.2);
+                const frontWindow = new THREE.Mesh(frontWindowGeometry, windowMaterial);
+                frontWindow.position.set(0, 2.8, 2.1);
+                vehicleGroup.add(frontWindow);
+
+                // Large tracks (left and right)
+                const trackGeometry = new THREE.BoxGeometry(1.2, 1.5, 5.0);
+                const trackMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 });
+
+                const leftTrack = new THREE.Mesh(trackGeometry, trackMaterial);
+                leftTrack.position.set(-2.5, 0.8, 0);
+                vehicleGroup.add(leftTrack);
+
+                const rightTrack = new THREE.Mesh(trackGeometry, trackMaterial);
+                rightTrack.position.set(2.5, 0.8, 0);
+                vehicleGroup.add(rightTrack);
+
+                // Front blade/plow
+                const bladeGeometry = new THREE.BoxGeometry(5.5, 0.8, 0.3);
+                const bladeMaterial = new THREE.MeshStandardMaterial({ color: 0xcccccc });
+                const blade = new THREE.Mesh(bladeGeometry, bladeMaterial);
+                blade.position.set(0, 1.2, 2.5);
+                vehicleGroup.add(blade);
+
+                // ROTATING BEACON (orange)
+                const beaconGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.6, 8);
+                const beaconMaterial = new THREE.MeshBasicMaterial({ color: 0xff6600 });
+                const beacon = new THREE.Mesh(beaconGeometry, beaconMaterial);
+                beacon.position.set(0, 4.7, 0);
+                vehicleGroup.add(beacon);
+
+                // Store beacon for animation
+                vehicleGroup.userData.beacon = beacon;
             }
 
-            const spawnDistance = 150;
-            const spawnX = player.position.x + (Math.random() - 0.5) * 100;
-            const spawnZ = player.position.z - spawnDistance;
-            const spawnY = getTerrainHeight(spawnX, spawnZ) + 2;
+            // Spawn uphill from player (they come from above)
+            const spawnDistance = 80 + Math.random() * 60;
+            const spawnX = player.position.x + (Math.random() - 0.5) * 80;
+            const spawnZ = player.position.z + spawnDistance; // BEHIND/UPHILL
+            const spawnY = getTerrainHeight(spawnX, spawnZ) + 3;
 
             vehicleGroup.position.set(spawnX, spawnY, spawnZ);
             vehicleGroup.castShadow = true;
@@ -1096,8 +1204,12 @@
             vehicles.push({
                 mesh: vehicleGroup,
                 type: type,
-                velocity: { x: 0, y: 0, z: 0 }
+                velocity: { x: 0, y: 0, z: 0 },
+                lightState: 0 // For alternating lights
             });
+
+            showPatrolAlert(`${type === 'snowmobile' ? 'SNOWMOBILE' : 'SNOW CAT'} DEPLOYED!`);
+            console.log(`🚨 ${type} spawned!`);
         }
 
         // Update wanted level
@@ -1632,7 +1744,7 @@
 
         // Update vehicles
         function updateVehicles(deltaTime) {
-            vehicles.forEach(vehicle => {
+            vehicles.forEach((vehicle, index) => {
                 const dx = player.position.x - vehicle.mesh.position.x;
                 const dz = player.position.z - vehicle.mesh.position.z;
                 const distance = Math.sqrt(dx * dx + dz * dz);
@@ -1643,7 +1755,7 @@
                 }
 
                 // Chase player aggressively
-                const speed = vehicle.type === 'skicat' ? 35 : 45;
+                const speed = vehicle.type === 'skicat' ? 40 : 55; // Faster vehicles!
                 const dirX = dx / distance;
                 const dirZ = dz / distance;
 
@@ -1658,10 +1770,27 @@
 
                 vehicle.mesh.position.x += vehicle.velocity.x * deltaTime;
                 vehicle.mesh.position.z += vehicle.velocity.z * deltaTime;
-                vehicle.mesh.position.y = terrainY + 2;
+                vehicle.mesh.position.y = terrainY + 3;
 
                 // Face movement direction
                 vehicle.mesh.rotation.y = Math.atan2(vehicle.velocity.x, vehicle.velocity.z);
+
+                // ANIMATE LIGHTS AND BEACONS
+                vehicle.lightState += deltaTime * 4; // Animation speed
+
+                if (vehicle.type === 'snowmobile' && vehicle.mesh.userData.lights) {
+                    // Alternating red and blue lights
+                    const flashOn = Math.floor(vehicle.lightState) % 2 === 0;
+                    vehicle.mesh.userData.lights[0].material.emissive = new THREE.Color(flashOn ? 0xff0000 : 0x330000);
+                    vehicle.mesh.userData.lights[1].material.emissive = new THREE.Color(flashOn ? 0x000033 : 0x0000ff);
+                    vehicle.mesh.userData.lights[0].scale.setScalar(flashOn ? 1.3 : 1.0);
+                    vehicle.mesh.userData.lights[1].scale.setScalar(flashOn ? 1.0 : 1.3);
+                } else if (vehicle.type === 'skicat' && vehicle.mesh.userData.beacon) {
+                    // Rotating orange beacon
+                    vehicle.mesh.userData.beacon.rotation.y += deltaTime * 10;
+                    const pulseScale = 1.0 + Math.sin(vehicle.lightState * 5) * 0.2;
+                    vehicle.mesh.userData.beacon.scale.setScalar(pulseScale);
+                }
             });
         }
 
@@ -1897,6 +2026,27 @@
                         scene.remove(patroller.mesh);
                         patrollers.splice(patrolIndex, 1);
                     }, 2000);
+                }
+            });
+
+            // Check for vehicle hits
+            vehicles.forEach((vehicle, vehicleIndex) => {
+                const dx = vehicle.mesh.position.x - bomb.mesh.position.x;
+                const dz = vehicle.mesh.position.z - bomb.mesh.position.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+
+                if (distance < explosionRadius) {
+                    // Vehicle destroyed by explosion!
+                    vehicle.mesh.rotation.x = Math.PI / 2; // Flip over
+                    evadedCount += 2; // Vehicles worth more points!
+                    document.getElementById('evaded').textContent = evadedCount;
+
+                    showPatrolAlert(`${vehicle.type === 'snowmobile' ? 'SNOWMOBILE' : 'SNOW CAT'} DESTROYED!`);
+
+                    setTimeout(() => {
+                        scene.remove(vehicle.mesh);
+                        vehicles.splice(vehicleIndex, 1);
+                    }, 3000);
                 }
             });
 
